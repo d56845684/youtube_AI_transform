@@ -127,6 +127,6 @@ async def create_calendar_event_for_booking(
     )
 
     db.add(record)
-    await db.commit()
-    await db.refresh(record)
+    await db.flush()
+
     return record

@@ -187,57 +187,68 @@ async def book_availability(
 
     platform_domain = "meet.google.com" if payload.platform == "Google Meet" else "voom.com"
     now_ts = int(datetime.now(tz=models.UTC_PLUS_8).timestamp())
-    conference_link = f"https://{platform_domain}/{teacher.id}-{current_user.id}-{now_ts}"
-
-    availability.is_booked = 1
-    booking = models.LessonBooking(
-        availability_id=availability.id,
-        student_id=current_user.id,
-        teacher_id=teacher.id,
-        platform=payload.platform,
-        conference_link=conference_link,
-    )
-    db.add(booking)
-    await db.commit()
-    await db.refresh(booking)
+    fallback_link = f"https://{platform_domain}/{teacher.id}-{current_user.id}-{now_ts}"
 
     google_event: models.GoogleCalendarEvent | None = None
-    try:
-        google_event = await google_integration.create_calendar_event_for_booking(
-            db=db,
-            booking=booking,
-            availability=availability,
-            teacher=teacher,
-            student=current_user,
-            reserved_by_email=current_user.email,
+
+    async with db.begin():
+        availability.is_booked = 1
+
+        booking = models.LessonBooking(
+            availability_id=availability.id,
+            student_id=current_user.id,
+            teacher_id=teacher.id,
+            platform=payload.platform,
+            conference_link=fallback_link,
         )
-    except google_integration.GoogleIntegrationError as exc:
-        logger.warning("Failed to sync booking to Google Calendar: %s", exc)
-
-    if google_event and google_event.meet_link:
-        booking.conference_link = google_event.meet_link
-        booking.platform = "Google Meet"
         db.add(booking)
-        await db.commit()
-        await db.refresh(booking)
+        await db.flush()
 
-    start_dt = normalize_to_utc_plus_8(availability.start_time)
-    end_dt = normalize_to_utc_plus_8(availability.end_time)
+        if payload.platform == "Google Meet":
+            try:
+                google_event = await google_integration.create_calendar_event_for_booking(
+                    db=db,
+                    booking=booking,
+                    availability=availability,
+                    teacher=teacher,
+                    student=current_user,
+                    reserved_by_email=current_user.email,
+                )
+            except google_integration.GoogleIntegrationError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Failed to generate Google Meet link",
+                ) from exc
 
-    meeting_record = models.MeetingRecord(
-        booking_id=booking.id,
-        reserved_by_id=current_user.id,
-        platform=booking.platform,
-        conference_link=booking.conference_link,
-        start_at=start_dt,
-        end_at=end_dt,
-        teacher_email=teacher.email,
-        student_email=current_user.email,
-        participant_emails=",".join(sorted({teacher.email, current_user.email})),
-    )
-    db.add(meeting_record)
-    await db.commit()
+            if not google_event.meet_link:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Google Meet link was not generated",
+                )
 
+            booking.conference_link = google_event.meet_link
+            booking.platform = "Google Meet"
+
+        start_dt = normalize_to_utc_plus_8(availability.start_time)
+        end_dt = normalize_to_utc_plus_8(availability.end_time)
+
+        meeting_record = models.MeetingRecord(
+            booking_id=booking.id,
+            reserved_by_id=current_user.id,
+            platform=booking.platform,
+            conference_link=booking.conference_link,
+            start_at=start_dt,
+            end_at=end_dt,
+            teacher_email=teacher.email,
+            student_email=current_user.email,
+            participant_emails=",".join(sorted({teacher.email, current_user.email})),
+        )
+        db.add(meeting_record)
+
+    if google_event:
+        await db.refresh(google_event)
+
+    await db.refresh(booking)
     return booking
 
 
