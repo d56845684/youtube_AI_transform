@@ -137,6 +137,26 @@ async def book_availability(
     await db.commit()
     await db.refresh(booking)
 
+    google_event: models.GoogleCalendarEvent | None = None
+    try:
+        google_event = await google_integration.create_calendar_event_for_booking(
+            db=db,
+            booking=booking,
+            availability=availability,
+            teacher=teacher,
+            student=current_user,
+            reserved_by_email=current_user.email,
+        )
+    except google_integration.GoogleIntegrationError as exc:
+        logger.warning("Failed to sync booking to Google Calendar: %s", exc)
+
+    if google_event and google_event.meet_link:
+        booking.conference_link = google_event.meet_link
+        booking.platform = "Google Meet"
+        db.add(booking)
+        await db.commit()
+        await db.refresh(booking)
+
     start_dt = datetime.combine(booking.reserved_at.date(), availability.start_time)
     end_dt = datetime.combine(booking.reserved_at.date(), availability.end_time)
 
@@ -153,18 +173,6 @@ async def book_availability(
     )
     db.add(meeting_record)
     await db.commit()
-
-    try:
-        await google_integration.create_calendar_event_for_booking(
-            db=db,
-            booking=booking,
-            availability=availability,
-            teacher=teacher,
-            student=current_user,
-            reserved_by_email=current_user.email,
-        )
-    except google_integration.GoogleIntegrationError as exc:
-        logger.warning("Failed to sync booking to Google Calendar: %s", exc)
 
     return booking
 
