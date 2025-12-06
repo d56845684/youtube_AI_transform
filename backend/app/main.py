@@ -2,14 +2,20 @@ from datetime import datetime
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import auth, google_integration, models, schemas
 from .database import Base, engine, get_db
 
-Base.metadata.create_all(bind=engine)
-
 app = FastAPI(title="Language Tutor Marketplace")
+
+
+@app.on_event("startup")
+async def on_startup() -> None:
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,10 +37,11 @@ def ensure_student(user: models.User) -> None:
 
 
 @app.post("/auth/register", response_model=schemas.UserOut)
-def register(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
-    existing = db.query(models.User).filter(models.User.email == user_in.email).first()
-    if existing:
+async def register(user_in: schemas.UserCreate, db: AsyncSession = Depends(get_db)):
+    existing = await db.execute(select(models.User).where(models.User.email == user_in.email))
+    if existing.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+
     hashed_password = auth.get_password_hash(user_in.password)
     user = models.User(
         email=user_in.email,
@@ -43,14 +50,17 @@ def register(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
         hashed_password=hashed_password,
     )
     db.add(user)
-    db.commit()
-    db.refresh(user)
+    await db.commit()
+    await db.refresh(user)
     return user
 
 
 @app.post("/auth/token", response_model=schemas.Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == form_data.username).first()
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(models.User).where(models.User.email == form_data.username))
+    user = result.scalar_one_or_none()
     if not user or not auth.verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
@@ -59,14 +69,14 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
 
 @app.get("/users/me", response_model=schemas.UserOut)
-def read_users_me(current_user: models.User = Depends(auth.get_current_user)):
+async def read_users_me(current_user: models.User = Depends(auth.get_current_user)):
     return current_user
 
 
 @app.post("/teachers/availability", response_model=schemas.AvailabilityOut)
-def create_availability(
+async def create_availability(
     payload: schemas.AvailabilityCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
     ensure_teacher(current_user)
@@ -77,28 +87,35 @@ def create_availability(
         end_time=payload.end_time,
     )
     db.add(availability)
-    db.commit()
-    db.refresh(availability)
+    await db.commit()
+    await db.refresh(availability)
     return availability
 
 
 @app.get("/teachers/{teacher_id}/availability", response_model=list[schemas.AvailabilityOut])
-def list_availability(teacher_id: int, db: Session = Depends(get_db)):
-    return db.query(models.TeacherAvailability).filter(models.TeacherAvailability.teacher_id == teacher_id).all()
+async def list_availability(teacher_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(models.TeacherAvailability).where(models.TeacherAvailability.teacher_id == teacher_id)
+    )
+    return result.scalars().all()
 
 
 @app.post("/bookings", response_model=schemas.BookingOut)
-def book_availability(
+async def book_availability(
     payload: schemas.BookingCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
     ensure_student(current_user)
-    availability = db.query(models.TeacherAvailability).filter(models.TeacherAvailability.id == payload.availability_id).first()
+    availability_result = await db.execute(
+        select(models.TeacherAvailability).where(models.TeacherAvailability.id == payload.availability_id)
+    )
+    availability = availability_result.scalar_one_or_none()
     if availability is None or availability.is_booked:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability not found or already booked")
 
-    teacher = db.query(models.User).filter(models.User.id == availability.teacher_id).first()
+    teacher_result = await db.execute(select(models.User).where(models.User.id == availability.teacher_id))
+    teacher = teacher_result.scalar_one_or_none()
     if teacher is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Teacher unavailable")
 
@@ -114,11 +131,11 @@ def book_availability(
         conference_link=conference_link,
     )
     db.add(booking)
-    db.commit()
-    db.refresh(booking)
+    await db.commit()
+    await db.refresh(booking)
 
     try:
-        google_integration.sync_booking_to_google(
+        await google_integration.sync_booking_to_google(
             booking=booking,
             availability=availability,
             teacher=teacher,
@@ -128,14 +145,14 @@ def book_availability(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(exc),
-        )
+        ) from exc
     return booking
 
 
 @app.post("/orders", response_model=schemas.OrderOut)
-def create_order(
+async def create_order(
     payload: schemas.OrderCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user),
 ):
     ensure_student(current_user)
@@ -146,13 +163,17 @@ def create_order(
         coupon_code=payload.coupon_code,
     )
     db.add(order)
-    db.commit()
-    db.refresh(order)
+    await db.commit()
+    await db.refresh(order)
     return order
 
 
 @app.get("/bookings", response_model=list[schemas.BookingOut])
-def list_bookings(current_user: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+async def list_bookings(
+    current_user: models.User = Depends(auth.get_current_user), db: AsyncSession = Depends(get_db)
+):
     if current_user.role == models.UserRole.TEACHER:
-        return db.query(models.LessonBooking).filter(models.LessonBooking.teacher_id == current_user.id).all()
-    return db.query(models.LessonBooking).filter(models.LessonBooking.student_id == current_user.id).all()
+        result = await db.execute(select(models.LessonBooking).where(models.LessonBooking.teacher_id == current_user.id))
+    else:
+        result = await db.execute(select(models.LessonBooking).where(models.LessonBooking.student_id == current_user.id))
+    return result.scalars().all()

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import asyncio
 from datetime import datetime, timezone
 
 import gspread
@@ -111,13 +112,16 @@ def _create_calendar_event(credentials, booking: models.LessonBooking, availabil
     calendar.events().insert(calendarId=calendar_id, body=event, conferenceDataVersion=1).execute()
 
 
-def sync_booking_to_google(*, booking: models.LessonBooking, availability: models.TeacherAvailability, teacher: models.User, student: models.User):
+async def sync_booking_to_google(*, booking: models.LessonBooking, availability: models.TeacherAvailability, teacher: models.User, student: models.User):
     """Push a confirmed booking to Google Sheets and Calendar."""
 
-    credentials = _load_credentials()
+    credentials = await asyncio.to_thread(_load_credentials)
     try:
-        _append_booking_to_sheet(credentials, booking, availability, teacher, student)
-        _create_calendar_event(credentials, booking, availability, teacher, student)
+        await asyncio.to_thread(
+            _append_booking_to_sheet, credentials, booking, availability, teacher, student
+        )
+        await asyncio.to_thread(
+            _create_calendar_event, credentials, booking, availability, teacher, student
+        )
     except (gspread.GSpreadException, HttpError) as exc:
         raise GoogleIntegrationError("Failed to synchronize booking with Google services") from exc
-
