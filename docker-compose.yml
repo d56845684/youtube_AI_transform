@@ -4,10 +4,8 @@ services:
   db:
     image: postgres:16
     restart: always
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: language_tutor
+    env_file:
+      - .env
     volumes:
       - db_data:/var/lib/postgresql/data
     ports:
@@ -17,10 +15,8 @@ services:
     build: ./backend
     depends_on:
       - db
-    environment:
-      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/language_tutor
-      SECRET_KEY: changeme-in-prod
-      UVICORN_RELOAD: "true"
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     volumes:
