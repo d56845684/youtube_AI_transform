@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select, text
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import auth, google_integration, models, schemas
@@ -23,63 +23,6 @@ def normalize_to_utc_plus_8(moment: datetime) -> datetime:
 @app.on_event("startup")
 async def on_startup() -> None:
     async with engine.begin() as conn:
-        # Ensure legacy databases have the platform column on lesson bookings
-        await conn.execute(
-            text(
-                """
-                ALTER TABLE lesson_bookings
-                ADD COLUMN IF NOT EXISTS platform VARCHAR NOT NULL DEFAULT 'Google Meet';
-                """
-            )
-        )
-
-        timezone_migrations = [
-            """
-            ALTER TABLE IF EXISTS teacher_availabilities
-            ALTER COLUMN start_time TYPE TIMESTAMP WITH TIME ZONE
-            USING ((CURRENT_DATE + start_time)::timestamp AT TIME ZONE '+08');
-            """,
-            """
-            ALTER TABLE IF EXISTS teacher_availabilities
-            ALTER COLUMN end_time TYPE TIMESTAMP WITH TIME ZONE
-            USING ((CURRENT_DATE + end_time)::timestamp AT TIME ZONE '+08');
-            """,
-            """
-            ALTER TABLE IF EXISTS users
-            ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE
-            USING (created_at AT TIME ZONE 'UTC'),
-            ALTER COLUMN created_at SET DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE '+08');
-            """,
-            """
-            ALTER TABLE IF EXISTS orders
-            ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE
-            USING (created_at AT TIME ZONE 'UTC'),
-            ALTER COLUMN created_at SET DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE '+08');
-            """,
-            """
-            ALTER TABLE IF EXISTS lesson_bookings
-            ALTER COLUMN reserved_at TYPE TIMESTAMP WITH TIME ZONE
-            USING (reserved_at AT TIME ZONE 'UTC'),
-            ALTER COLUMN reserved_at SET DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE '+08');
-            """,
-            """
-            ALTER TABLE IF EXISTS meeting_records
-            ALTER COLUMN start_at TYPE TIMESTAMP WITH TIME ZONE
-            USING (start_at AT TIME ZONE 'UTC'),
-            ALTER COLUMN end_at TYPE TIMESTAMP WITH TIME ZONE
-            USING (end_at AT TIME ZONE 'UTC');
-            """,
-            """
-            ALTER TABLE IF EXISTS google_calendar_events
-            ALTER COLUMN start_at TYPE TIMESTAMP WITH TIME ZONE
-            USING (start_at AT TIME ZONE 'UTC'),
-            ALTER COLUMN end_at TYPE TIMESTAMP WITH TIME ZONE
-            USING (end_at AT TIME ZONE 'UTC');
-            """,
-        ]
-
-        for statement in timezone_migrations:
-            await conn.execute(text(statement))
         await conn.run_sync(Base.metadata.create_all)
 
 
@@ -102,7 +45,41 @@ def ensure_student(user: models.User) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Student role required")
 
 
-@app.post("/auth/register", response_model=schemas.UserOut)
+def ensure_superuser(user: models.User) -> None:
+    if user.role != models.UserRole.SUPERUSER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superuser role required")
+
+
+async def get_booking_with_permission(
+    booking_id: int, current_user: models.User, db: AsyncSession
+) -> models.LessonBooking:
+    result = await db.execute(select(models.LessonBooking).where(models.LessonBooking.id == booking_id))
+    booking = result.scalar_one_or_none()
+    if booking is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found")
+
+    if current_user.role == models.UserRole.SUPERUSER:
+        return booking
+
+    if booking.teacher_id != current_user.id and booking.student_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to access booking")
+    return booking
+
+
+async def get_order_with_permission(
+    order_id: int, current_user: models.User, db: AsyncSession
+) -> models.Order:
+    result = await db.execute(select(models.Order).where(models.Order.id == order_id))
+    order = result.scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    if current_user.role != models.UserRole.SUPERUSER and order.student_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to access order")
+    return order
+
+
+@app.post("/auth/register", response_model=schemas.UserOut, tags=["Auth"])
 async def register(user_in: schemas.UserCreate, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(models.User).where(models.User.email == user_in.email))
     if existing.scalar_one_or_none():
@@ -121,7 +98,7 @@ async def register(user_in: schemas.UserCreate, db: AsyncSession = Depends(get_d
     return user
 
 
-@app.post("/auth/token", response_model=schemas.Token)
+@app.post("/auth/token", response_model=schemas.Token, tags=["Auth"])
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)
 ):
@@ -134,12 +111,81 @@ async def login(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@app.get("/users/me", response_model=schemas.UserOut)
+@app.get("/users/me", response_model=schemas.UserOut, tags=["Users"])
 async def read_users_me(current_user: models.User = Depends(auth.get_current_user)):
     return current_user
 
 
-@app.post("/teachers/availability", response_model=schemas.AvailabilityOut)
+@app.get("/users", response_model=list[schemas.UserOut], tags=["Users"])
+async def list_users(
+    current_user: models.User = Depends(auth.get_current_user), db: AsyncSession = Depends(get_db)
+):
+    ensure_superuser(current_user)
+    result = await db.execute(select(models.User))
+    return result.scalars().all()
+
+
+@app.get("/users/{user_id}", response_model=schemas.UserOut, tags=["Users"])
+async def get_user(
+    user_id: int,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role != models.UserRole.SUPERUSER and current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to view this user")
+
+    result = await db.execute(select(models.User).where(models.User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user
+
+
+@app.put("/users/{user_id}", response_model=schemas.UserOut, tags=["Users"])
+async def update_user(
+    user_id: int,
+    payload: schemas.UserUpdate,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role != models.UserRole.SUPERUSER and current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to update this user")
+
+    result = await db.execute(select(models.User).where(models.User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if payload.full_name is not None:
+        user.full_name = payload.full_name
+    if payload.role is not None:
+        ensure_superuser(current_user)
+        user.role = models.UserRole(payload.role.value)
+    if payload.password is not None:
+        user.hashed_password = auth.get_password_hash(payload.password)
+
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@app.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Users"])
+async def delete_user(
+    user_id: int,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    ensure_superuser(current_user)
+    result = await db.execute(select(models.User).where(models.User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    await db.delete(user)
+    await db.commit()
+    return None
+
+
+@app.post("/teachers/availability", response_model=schemas.AvailabilityOut, tags=["Teacher Availability"])
 async def create_availability(
     payload: schemas.AvailabilityCreate,
     db: AsyncSession = Depends(get_db),
@@ -158,7 +204,11 @@ async def create_availability(
     return availability
 
 
-@app.get("/teachers/{teacher_id}/availability", response_model=list[schemas.AvailabilityOut])
+@app.get(
+    "/teachers/{teacher_id}/availability",
+    response_model=list[schemas.AvailabilityOut],
+    tags=["Teacher Availability"],
+)
 async def list_availability(teacher_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(models.TeacherAvailability).where(models.TeacherAvailability.teacher_id == teacher_id)
@@ -166,7 +216,88 @@ async def list_availability(teacher_id: int, db: AsyncSession = Depends(get_db))
     return result.scalars().all()
 
 
-@app.post("/bookings", response_model=schemas.BookingOut)
+@app.get(
+    "/availability/{availability_id}",
+    response_model=schemas.AvailabilityOut,
+    tags=["Teacher Availability"],
+)
+async def get_availability(
+    availability_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    result = await db.execute(
+        select(models.TeacherAvailability).where(models.TeacherAvailability.id == availability_id)
+    )
+    availability = result.scalar_one_or_none()
+    if availability is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability not found")
+    if current_user.role != models.UserRole.SUPERUSER and availability.teacher_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to view availability")
+    return availability
+
+
+@app.put(
+    "/availability/{availability_id}",
+    response_model=schemas.AvailabilityOut,
+    tags=["Teacher Availability"],
+)
+async def update_availability(
+    availability_id: int,
+    payload: schemas.AvailabilityUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    ensure_teacher(current_user)
+    result = await db.execute(
+        select(models.TeacherAvailability).where(models.TeacherAvailability.id == availability_id)
+    )
+    availability = result.scalar_one_or_none()
+    if availability is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability not found")
+    if current_user.role != models.UserRole.SUPERUSER and availability.teacher_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to update availability")
+
+    if payload.weekday is not None:
+        availability.weekday = payload.weekday
+    if payload.start_time is not None:
+        availability.start_time = normalize_to_utc_plus_8(payload.start_time)
+    if payload.end_time is not None:
+        availability.end_time = normalize_to_utc_plus_8(payload.end_time)
+    if payload.is_booked is not None:
+        availability.is_booked = payload.is_booked
+
+    await db.commit()
+    await db.refresh(availability)
+    return availability
+
+
+@app.delete(
+    "/availability/{availability_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Teacher Availability"],
+)
+async def delete_availability(
+    availability_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    ensure_teacher(current_user)
+    result = await db.execute(
+        select(models.TeacherAvailability).where(models.TeacherAvailability.id == availability_id)
+    )
+    availability = result.scalar_one_or_none()
+    if availability is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability not found")
+    if current_user.role != models.UserRole.SUPERUSER and availability.teacher_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to delete availability")
+
+    await db.delete(availability)
+    await db.commit()
+    return None
+
+
+@app.post("/bookings", response_model=schemas.BookingOut, tags=["Bookings"])
 async def book_availability(
     payload: schemas.BookingCreate,
     db: AsyncSession = Depends(get_db),
@@ -252,7 +383,72 @@ async def book_availability(
     return booking
 
 
-@app.post("/orders", response_model=schemas.OrderOut)
+@app.get("/bookings/{booking_id}", response_model=schemas.BookingOut, tags=["Bookings"])
+async def get_booking(
+    booking_id: int,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    booking = await get_booking_with_permission(booking_id, current_user, db)
+    return booking
+
+
+@app.put("/bookings/{booking_id}", response_model=schemas.BookingOut, tags=["Bookings"])
+async def update_booking(
+    booking_id: int,
+    payload: schemas.BookingUpdate,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    booking = await get_booking_with_permission(booking_id, current_user, db)
+
+    if payload.platform is not None:
+        booking.platform = payload.platform
+    if payload.conference_link is not None:
+        booking.conference_link = payload.conference_link
+
+    await db.commit()
+    await db.refresh(booking)
+    return booking
+
+
+@app.delete("/bookings/{booking_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Bookings"])
+async def delete_booking(
+    booking_id: int,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    booking = await get_booking_with_permission(booking_id, current_user, db)
+
+    async with db.begin():
+        if booking.availability_id:
+            availability_result = await db.execute(
+                select(models.TeacherAvailability).where(models.TeacherAvailability.id == booking.availability_id)
+            )
+            availability = availability_result.scalar_one_or_none()
+            if availability:
+                availability.is_booked = 0
+
+        event_result = await db.execute(
+            select(models.GoogleCalendarEvent).where(models.GoogleCalendarEvent.booking_id == booking.id)
+        )
+        calendar_event = event_result.scalar_one_or_none()
+        if calendar_event:
+            await db.delete(calendar_event)
+
+        record_result = await db.execute(
+            select(models.MeetingRecord).where(models.MeetingRecord.booking_id == booking.id)
+        )
+        meeting_record = record_result.scalar_one_or_none()
+        if meeting_record:
+            await db.delete(meeting_record)
+
+        await db.delete(booking)
+
+    return None
+
+
+@app.post("/orders", response_model=schemas.OrderOut, tags=["Orders"])
 async def create_order(
     payload: schemas.OrderCreate,
     db: AsyncSession = Depends(get_db),
@@ -271,7 +467,7 @@ async def create_order(
     return order
 
 
-@app.get("/orders", response_model=list[schemas.OrderOut])
+@app.get("/orders", response_model=list[schemas.OrderOut], tags=["Orders"])
 async def list_orders(
     db: AsyncSession = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)
 ):
@@ -283,7 +479,50 @@ async def list_orders(
     return result.scalars().all()
 
 
-@app.get("/bookings", response_model=list[schemas.BookingOut])
+@app.get("/orders/{order_id}", response_model=schemas.OrderOut, tags=["Orders"])
+async def get_order(
+    order_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    order = await get_order_with_permission(order_id, current_user, db)
+    return order
+
+
+@app.put("/orders/{order_id}", response_model=schemas.OrderOut, tags=["Orders"])
+async def update_order(
+    order_id: int,
+    payload: schemas.OrderUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    order = await get_order_with_permission(order_id, current_user, db)
+
+    if payload.order_total is not None:
+        order.order_total = payload.order_total
+    if payload.lesson_credits is not None:
+        order.lesson_credits = payload.lesson_credits
+    if payload.coupon_code is not None:
+        order.coupon_code = payload.coupon_code
+
+    await db.commit()
+    await db.refresh(order)
+    return order
+
+
+@app.delete("/orders/{order_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Orders"])
+async def delete_order(
+    order_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    order = await get_order_with_permission(order_id, current_user, db)
+    await db.delete(order)
+    await db.commit()
+    return None
+
+
+@app.get("/bookings", response_model=list[schemas.BookingOut], tags=["Bookings"])
 async def list_bookings(
     current_user: models.User = Depends(auth.get_current_user), db: AsyncSession = Depends(get_db)
 ):
@@ -298,3 +537,270 @@ async def list_bookings(
             select(models.LessonBooking).where(models.LessonBooking.student_id == current_user.id)
         )
     return result.scalars().all()
+
+
+@app.get(
+    "/meeting-records",
+    response_model=list[schemas.MeetingRecordOut],
+    tags=["Meeting Records"],
+)
+async def list_meeting_records(
+    current_user: models.User = Depends(auth.get_current_user), db: AsyncSession = Depends(get_db)
+):
+    query = select(models.MeetingRecord).join(
+        models.LessonBooking, models.MeetingRecord.booking_id == models.LessonBooking.id
+    )
+    if current_user.role != models.UserRole.SUPERUSER:
+        query = query.where(
+            or_(
+                models.LessonBooking.teacher_id == current_user.id,
+                models.LessonBooking.student_id == current_user.id,
+            )
+        )
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@app.post(
+    "/meeting-records",
+    response_model=schemas.MeetingRecordOut,
+    tags=["Meeting Records"],
+)
+async def create_meeting_record(
+    payload: schemas.MeetingRecordCreate,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await get_booking_with_permission(payload.booking_id, current_user, db)
+
+    record = models.MeetingRecord(
+        booking_id=payload.booking_id,
+        reserved_by_id=payload.reserved_by_id or current_user.id,
+        platform=payload.platform,
+        conference_link=payload.conference_link,
+        start_at=normalize_to_utc_plus_8(payload.start_at),
+        end_at=normalize_to_utc_plus_8(payload.end_at),
+        teacher_email=payload.teacher_email,
+        student_email=payload.student_email,
+        participant_emails=payload.participant_emails,
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+
+@app.get(
+    "/meeting-records/{record_id}",
+    response_model=schemas.MeetingRecordOut,
+    tags=["Meeting Records"],
+)
+async def get_meeting_record(
+    record_id: int,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(models.MeetingRecord).where(models.MeetingRecord.id == record_id))
+    record = result.scalar_one_or_none()
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting record not found")
+    await get_booking_with_permission(record.booking_id, current_user, db)
+    return record
+
+
+@app.put(
+    "/meeting-records/{record_id}",
+    response_model=schemas.MeetingRecordOut,
+    tags=["Meeting Records"],
+)
+async def update_meeting_record(
+    record_id: int,
+    payload: schemas.MeetingRecordUpdate,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(models.MeetingRecord).where(models.MeetingRecord.id == record_id))
+    record = result.scalar_one_or_none()
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting record not found")
+    await get_booking_with_permission(record.booking_id, current_user, db)
+
+    if payload.reserved_by_id is not None:
+        record.reserved_by_id = payload.reserved_by_id
+    if payload.platform is not None:
+        record.platform = payload.platform
+    if payload.conference_link is not None:
+        record.conference_link = payload.conference_link
+    if payload.start_at is not None:
+        record.start_at = normalize_to_utc_plus_8(payload.start_at)
+    if payload.end_at is not None:
+        record.end_at = normalize_to_utc_plus_8(payload.end_at)
+    if payload.teacher_email is not None:
+        record.teacher_email = payload.teacher_email
+    if payload.student_email is not None:
+        record.student_email = payload.student_email
+    if payload.participant_emails is not None:
+        record.participant_emails = payload.participant_emails
+
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+
+@app.delete(
+    "/meeting-records/{record_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Meeting Records"],
+)
+async def delete_meeting_record(
+    record_id: int,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(models.MeetingRecord).where(models.MeetingRecord.id == record_id))
+    record = result.scalar_one_or_none()
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting record not found")
+    await get_booking_with_permission(record.booking_id, current_user, db)
+
+    await db.delete(record)
+    await db.commit()
+    return None
+
+
+@app.get(
+    "/calendar-events",
+    response_model=list[schemas.CalendarEventOut],
+    tags=["Calendar Events"],
+)
+async def list_calendar_events(
+    current_user: models.User = Depends(auth.get_current_user), db: AsyncSession = Depends(get_db)
+):
+    query = select(models.GoogleCalendarEvent).join(
+        models.LessonBooking, models.GoogleCalendarEvent.booking_id == models.LessonBooking.id
+    )
+    if current_user.role != models.UserRole.SUPERUSER:
+        query = query.where(
+            or_(
+                models.LessonBooking.teacher_id == current_user.id,
+                models.LessonBooking.student_id == current_user.id,
+            )
+        )
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@app.post(
+    "/calendar-events",
+    response_model=schemas.CalendarEventOut,
+    tags=["Calendar Events"],
+)
+async def create_calendar_event(
+    payload: schemas.CalendarEventCreate,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await get_booking_with_permission(payload.booking_id, current_user, db)
+
+    event = models.GoogleCalendarEvent(
+        booking_id=payload.booking_id,
+        calendar_event_id=payload.calendar_event_id,
+        calendar_id=payload.calendar_id or "primary",
+        summary=payload.summary,
+        description=payload.description,
+        meet_link=payload.meet_link,
+        start_at=normalize_to_utc_plus_8(payload.start_at),
+        end_at=normalize_to_utc_plus_8(payload.end_at),
+        creator_email=payload.creator_email,
+        attendee_emails=payload.attendee_emails,
+    )
+    db.add(event)
+    await db.commit()
+    await db.refresh(event)
+    return event
+
+
+@app.get(
+    "/calendar-events/{event_id}",
+    response_model=schemas.CalendarEventOut,
+    tags=["Calendar Events"],
+)
+async def get_calendar_event(
+    event_id: int,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(models.GoogleCalendarEvent).where(models.GoogleCalendarEvent.id == event_id)
+    )
+    event = result.scalar_one_or_none()
+    if event is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar event not found")
+    await get_booking_with_permission(event.booking_id, current_user, db)
+    return event
+
+
+@app.put(
+    "/calendar-events/{event_id}",
+    response_model=schemas.CalendarEventOut,
+    tags=["Calendar Events"],
+)
+async def update_calendar_event(
+    event_id: int,
+    payload: schemas.CalendarEventUpdate,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(models.GoogleCalendarEvent).where(models.GoogleCalendarEvent.id == event_id)
+    )
+    event = result.scalar_one_or_none()
+    if event is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar event not found")
+    await get_booking_with_permission(event.booking_id, current_user, db)
+
+    if payload.calendar_event_id is not None:
+        event.calendar_event_id = payload.calendar_event_id
+    if payload.calendar_id is not None:
+        event.calendar_id = payload.calendar_id
+    if payload.summary is not None:
+        event.summary = payload.summary
+    if payload.description is not None:
+        event.description = payload.description
+    if payload.meet_link is not None:
+        event.meet_link = payload.meet_link
+    if payload.start_at is not None:
+        event.start_at = normalize_to_utc_plus_8(payload.start_at)
+    if payload.end_at is not None:
+        event.end_at = normalize_to_utc_plus_8(payload.end_at)
+    if payload.creator_email is not None:
+        event.creator_email = payload.creator_email
+    if payload.attendee_emails is not None:
+        event.attendee_emails = payload.attendee_emails
+
+    await db.commit()
+    await db.refresh(event)
+    return event
+
+
+@app.delete(
+    "/calendar-events/{event_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Calendar Events"],
+)
+async def delete_calendar_event(
+    event_id: int,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(models.GoogleCalendarEvent).where(models.GoogleCalendarEvent.id == event_id)
+    )
+    event = result.scalar_one_or_none()
+    if event is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar event not found")
+    await get_booking_with_permission(event.booking_id, current_user, db)
+
+    await db.delete(event)
+    await db.commit()
+    return None
