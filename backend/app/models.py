@@ -88,3 +88,23 @@ class MeetingRecord(Base):
 
     booking = relationship("LessonBooking")
     reserved_by = relationship("User")
+
+
+class GoogleCalendarEvent(Base):
+    __tablename__ = "google_calendar_events"
+
+    id = Column(Integer, primary_key=True)
+    booking_id = Column(
+        Integer, ForeignKey("lesson_bookings.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    calendar_event_id = Column(String, nullable=False, unique=True)
+    calendar_id = Column(String, nullable=False, default="primary")
+    summary = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    meet_link = Column(String, nullable=True)
+    start_at = Column(DateTime, nullable=False)
+    end_at = Column(DateTime, nullable=False)
+    creator_email = Column(String, nullable=False)
+    attendee_emails = Column(String, nullable=True)
+
+    booking = relationship("LessonBooking")
