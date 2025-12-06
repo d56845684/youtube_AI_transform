@@ -20,6 +20,11 @@ Nginx serves the static assets from `frontend/` with a simple health check at [h
 Set environment variables (or copy `.env.example`):
 - `DATABASE_URL`: PostgreSQL connection string
 - `SECRET_KEY`: JWT signing key
+- `GOOGLE_CREDENTIALS_JSON` or `GOOGLE_CREDENTIALS_FILE`: service account credentials used for Google Sheets and Calendar
+  (Sheets/Calendar scopes are required)
+- `GOOGLE_SHEETS_ID`: spreadsheet key to log confirmed bookings (optional but recommended)
+- `GOOGLE_SHEETS_WORKSHEET`: worksheet/tab name to target; defaults to the first worksheet
+- `GOOGLE_CALENDAR_ID`: calendar to receive auto-created lesson events
 
 ## API highlights
 - `POST /auth/register`: create user (role `student` or `teacher`).
