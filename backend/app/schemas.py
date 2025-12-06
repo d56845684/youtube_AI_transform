@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import datetime
 from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, EmailStr, constr
@@ -40,15 +40,15 @@ class TokenData(BaseModel):
 
 class AvailabilityCreate(BaseModel):
     weekday: constr(min_length=3)
-    start_time: time
-    end_time: time
+    start_time: datetime
+    end_time: datetime
 
 
 class AvailabilityOut(BaseModel):
     id: int
     weekday: str
-    start_time: time
-    end_time: time
+    start_time: datetime
+    end_time: datetime
     is_booked: int
 
     class Config:

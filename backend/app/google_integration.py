@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import timezone
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -78,8 +78,8 @@ async def create_calendar_event_for_booking(
     credentials = await asyncio.to_thread(_load_credentials)
     calendar_id = os.getenv("GOOGLE_CALENDAR_ID", "primary")
 
-    start_dt = datetime.combine(booking.reserved_at.date(), availability.start_time).replace(tzinfo=timezone.utc)
-    end_dt = datetime.combine(booking.reserved_at.date(), availability.end_time).replace(tzinfo=timezone.utc)
+    start_dt = availability.start_time.astimezone(timezone.utc)
+    end_dt = availability.end_time.astimezone(timezone.utc)
 
     summary = f"Lesson: {student.full_name} ↔ {teacher.full_name}"
     description = f"Platform: {booking.platform}\nLink: {booking.conference_link}"

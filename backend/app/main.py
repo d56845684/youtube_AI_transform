@@ -1,9 +1,9 @@
-from datetime import datetime
 import logging
+from datetime import datetime
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import auth, google_integration, models, schemas
@@ -14,9 +14,72 @@ app = FastAPI(title="Language Tutor Marketplace")
 logger = logging.getLogger(__name__)
 
 
+def normalize_to_utc_plus_8(moment: datetime) -> datetime:
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=models.UTC_PLUS_8)
+    return moment.astimezone(models.UTC_PLUS_8)
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
     async with engine.begin() as conn:
+        # Ensure legacy databases have the platform column on lesson bookings
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE lesson_bookings
+                ADD COLUMN IF NOT EXISTS platform VARCHAR NOT NULL DEFAULT 'Google Meet';
+                """
+            )
+        )
+
+        timezone_migrations = [
+            """
+            ALTER TABLE IF EXISTS teacher_availabilities
+            ALTER COLUMN start_time TYPE TIMESTAMP WITH TIME ZONE
+            USING ((CURRENT_DATE + start_time)::timestamp AT TIME ZONE '+08');
+            """,
+            """
+            ALTER TABLE IF EXISTS teacher_availabilities
+            ALTER COLUMN end_time TYPE TIMESTAMP WITH TIME ZONE
+            USING ((CURRENT_DATE + end_time)::timestamp AT TIME ZONE '+08');
+            """,
+            """
+            ALTER TABLE IF EXISTS users
+            ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE
+            USING (created_at AT TIME ZONE 'UTC'),
+            ALTER COLUMN created_at SET DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE '+08');
+            """,
+            """
+            ALTER TABLE IF EXISTS orders
+            ALTER COLUMN created_at TYPE TIMESTAMP WITH TIME ZONE
+            USING (created_at AT TIME ZONE 'UTC'),
+            ALTER COLUMN created_at SET DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE '+08');
+            """,
+            """
+            ALTER TABLE IF EXISTS lesson_bookings
+            ALTER COLUMN reserved_at TYPE TIMESTAMP WITH TIME ZONE
+            USING (reserved_at AT TIME ZONE 'UTC'),
+            ALTER COLUMN reserved_at SET DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE '+08');
+            """,
+            """
+            ALTER TABLE IF EXISTS meeting_records
+            ALTER COLUMN start_at TYPE TIMESTAMP WITH TIME ZONE
+            USING (start_at AT TIME ZONE 'UTC'),
+            ALTER COLUMN end_at TYPE TIMESTAMP WITH TIME ZONE
+            USING (end_at AT TIME ZONE 'UTC');
+            """,
+            """
+            ALTER TABLE IF EXISTS google_calendar_events
+            ALTER COLUMN start_at TYPE TIMESTAMP WITH TIME ZONE
+            USING (start_at AT TIME ZONE 'UTC'),
+            ALTER COLUMN end_at TYPE TIMESTAMP WITH TIME ZONE
+            USING (end_at AT TIME ZONE 'UTC');
+            """,
+        ]
+
+        for statement in timezone_migrations:
+            await conn.execute(text(statement))
         await conn.run_sync(Base.metadata.create_all)
 
 
@@ -86,8 +149,8 @@ async def create_availability(
     availability = models.TeacherAvailability(
         teacher_id=current_user.id,
         weekday=payload.weekday,
-        start_time=payload.start_time,
-        end_time=payload.end_time,
+        start_time=normalize_to_utc_plus_8(payload.start_time),
+        end_time=normalize_to_utc_plus_8(payload.end_time),
     )
     db.add(availability)
     await db.commit()
@@ -123,7 +186,8 @@ async def book_availability(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Teacher unavailable")
 
     platform_domain = "meet.google.com" if payload.platform == "Google Meet" else "voom.com"
-    conference_link = f"https://{platform_domain}/{teacher.id}-{current_user.id}-{int(datetime.utcnow().timestamp())}"
+    now_ts = int(datetime.now(tz=models.UTC_PLUS_8).timestamp())
+    conference_link = f"https://{platform_domain}/{teacher.id}-{current_user.id}-{now_ts}"
 
     availability.is_booked = 1
     booking = models.LessonBooking(
@@ -157,8 +221,8 @@ async def book_availability(
         await db.commit()
         await db.refresh(booking)
 
-    start_dt = datetime.combine(booking.reserved_at.date(), availability.start_time)
-    end_dt = datetime.combine(booking.reserved_at.date(), availability.end_time)
+    start_dt = normalize_to_utc_plus_8(availability.start_time)
+    end_dt = normalize_to_utc_plus_8(availability.end_time)
 
     meeting_record = models.MeetingRecord(
         booking_id=booking.id,
