@@ -18,7 +18,8 @@ Nginx serves the static assets from `frontend/` with a simple health check at [h
 
 ## Environment
 Set environment variables (or copy `.env.example`):
-- `DATABASE_URL`: PostgreSQL connection string
+- `DATABASE_URL`: PostgreSQL connection string using the async driver
+  (e.g., `postgresql+asyncpg://user:password@db:5432/language_tutor`)
 - `SECRET_KEY`: JWT signing key
 - `GOOGLE_CREDENTIALS_JSON` or `GOOGLE_CREDENTIALS_FILE`: service account credentials used for Google Sheets and Calendar
   (Sheets/Calendar scopes are required)
