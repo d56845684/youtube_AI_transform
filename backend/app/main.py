@@ -1,14 +1,17 @@
 from datetime import datetime
+import logging
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import auth, models, schemas
+from . import auth, google_integration, models, schemas
 from .database import Base, engine, get_db
 
 app = FastAPI(title="Language Tutor Marketplace")
+
+logger = logging.getLogger(__name__)
 
 
 @app.on_event("startup")
@@ -150,6 +153,19 @@ async def book_availability(
     )
     db.add(meeting_record)
     await db.commit()
+
+    try:
+        await google_integration.create_calendar_event_for_booking(
+            db=db,
+            booking=booking,
+            availability=availability,
+            teacher=teacher,
+            student=current_user,
+            reserved_by_email=current_user.email,
+        )
+    except google_integration.GoogleIntegrationError as exc:
+        logger.warning("Failed to sync booking to Google Calendar: %s", exc)
+
     return booking
 
 
