@@ -29,26 +29,68 @@
                 </ol>
             </div>
         </div>
+        <nav class="nav-tabs container" aria-label="page tabs">
+            <button class="tab active" data-nav="auth">登入 / 註冊</button>
+            <button class="tab" data-nav="booking">查看 / 預約</button>
+            <button class="tab" data-nav="admin">平台管理</button>
+        </nav>
     </header>
 
     <main class="container">
-        <section class="card-grid">
-            <article class="card">
-                <h2>商業邏輯狀態</h2>
-                <ul class="checklist">
-                    <li><span class="check-icon">✓</span><span>學生下訂單產生課堂點數，並可透過 UI 及 <code>/bookings</code> 預約老師空檔。</span></li>
-                    <li><span class="check-icon">✓</span><span>教師填寫可教學時間 <code>/teachers/availability</code>，等待學生預約。</span></li>
-                    <li><span class="check-icon">✓</span><span>預約時指定平台（Google Meet / VOOM）後自動生成會議連結。</span></li>
-                    <li><span class="check-icon">✓</span><span>資料庫模型涵蓋訂單、上課記錄、會員、優惠碼欄位、預約紀錄與教室預約狀態。</span></li>
-                </ul>
-            </article>
-            <article class="card">
-                <h2>學生預約流程</h2>
-                <div class="timeline" id="timeline"></div>
-                <div class="field-group">
-                    <label for="platform">選擇會議平台</label>
+        <section class="page active" data-page="auth">
+            <div class="card-grid two-column">
+                <article class="card">
+                    <h2>登入</h2>
+                    <p>透過 JWT 取得存取權杖，支援 student / teacher 角色。</p>
+                    <form id="login-form" class="field-group">
+                        <input type="email" name="email" placeholder="Email" required>
+                        <input type="password" name="password" placeholder="密碼" required>
+                        <select name="role">
+                            <option value="student">學生</option>
+                            <option value="teacher">教師</option>
+                        </select>
+                        <button type="submit">登入並取得 Token</button>
+                        <div id="login-status" class="status-line" aria-live="polite"></div>
+                    </form>
+                </article>
+                <article class="card">
+                    <h2>註冊</h2>
+                    <p>建立帳號後即可在下方預約或管理介面查看資料。</p>
+                    <form id="register-form" class="field-group">
+                        <input type="text" name="fullName" placeholder="姓名" required>
+                        <input type="email" name="email" placeholder="Email" required>
+                        <input type="password" name="password" placeholder="密碼" required>
+                        <select name="role">
+                            <option value="student">學生</option>
+                            <option value="teacher">教師</option>
+                        </select>
+                        <button type="submit">建立新帳號</button>
+                        <div id="register-status" class="status-line" aria-live="polite"></div>
+                    </form>
+                </article>
+            </div>
+            <section class="card">
+                <h3>快速 API 對照</h3>
+                <div class="tag-row">
+                    <span class="tag">POST /auth/register</span>
+                    <span class="tag">POST /auth/token</span>
+                    <span class="tag">以角色切換 JWT 權限</span>
+                </div>
+            </section>
+        </section>
+
+        <section class="page" data-page="booking">
+            <div class="card-grid two-column">
+                <article class="card">
+                    <h2>查看可預約時段</h2>
+                    <p>左側列表模擬 <code>/teachers/{id}/availability</code> 的回傳結果。</p>
+                    <div class="timeline" id="timeline"></div>
+                </article>
+                <article class="card">
+                    <h2>進行預約</h2>
+                    <p>填入學生與老師資訊，即會生成對應會議平台的連結。</p>
                     <form id="booking-form" class="field-group">
-                        <div class="field-group">
+                        <div class="field-group two-column">
                             <input type="text" name="studentId" placeholder="Student ID" value="42">
                             <input type="text" name="teacherId" placeholder="Teacher ID" value="18">
                         </div>
@@ -56,93 +98,78 @@
                             <option>Google Meet</option>
                             <option>VOOM</option>
                         </select>
+                        <input type="text" name="topic" placeholder="主題（選填）">
                         <button type="submit">產生預約連結</button>
                         <div id="link-preview" aria-live="polite"></div>
                     </form>
-                </div>
-            </article>
-            <article class="card">
-                <h2>教師可教時間</h2>
-                <p>教師透過表單填寫可教學日與時間，系統會同步到資料庫的 <code>teacher_availabilities</code> 表，學生查詢後直接下單預約。</p>
-                <div class="field-group">
-                    <label>快速建立一組時段</label>
-                    <div class="field-group">
-                        <input type="text" value="星期二" readonly>
-                        <input type="text" value="19:00 - 21:00" readonly>
-                        <button type="button">提交到 API</button>
-                    </div>
-                </div>
-                <div class="tag-row">
-                    <span class="tag">POST /teachers/availability</span>
-                    <span class="tag">JWT 保護</span>
-                </div>
-            </article>
-        </section>
-
-        <section class="card">
-            <h2>資料庫設計（重點表）</h2>
-            <table class="table-preview">
-                <thead>
-                    <tr>
-                        <th>資料表</th>
-                        <th>用途</th>
-                        <th>關聯</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>users</td>
-                        <td>學生 / 教師會員，角色分離</td>
-                        <td>與 orders、teacher_availabilities、lesson_bookings 連結</td>
-                    </tr>
-                    <tr>
-                        <td>orders</td>
-                        <td>紀錄訂單金額、課堂點數、優惠碼</td>
-                        <td>student_id → users</td>
-                    </tr>
-                    <tr>
-                        <td>teacher_availabilities</td>
-                        <td>教師可預約時段、預約狀態</td>
-                        <td>teacher_id → users；與 lesson_bookings 一對一</td>
-                    </tr>
-                    <tr>
-                        <td>lesson_bookings</td>
-                        <td>學生預約紀錄，含會議連結與上課時間</td>
-                        <td>student_id / teacher_id → users；availability_id → teacher_availabilities</td>
-                    </tr>
-                </tbody>
-            </table>
-            <p class="footer-note">所有表皆透過 SQLAlchemy 建立，支援主外鍵、預約狀態與時間戳記。</p>
-        </section>
-
-        <section class="card">
-            <h2>資料流對照</h2>
-            <div class="card-grid">
-                <div>
-                    <h3>學生端</h3>
-                    <ul class="checklist">
-                        <li><span class="check-icon">✓</span><span>購買點數：POST <code>/orders</code></span></li>
-                        <li><span class="check-icon">✓</span><span>查詢老師空檔：GET <code>/teachers/{id}/availability</code></span></li>
-                        <li><span class="check-icon">✓</span><span>預約並生成會議室：POST <code>/bookings</code></span></li>
-                    </ul>
-                </div>
-                <div>
-                    <h3>教師端</h3>
-                    <ul class="checklist">
-                        <li><span class="check-icon">✓</span><span>填寫教學時間：POST <code>/teachers/availability</code></span></li>
-                        <li><span class="check-icon">✓</span><span>查看預約：GET <code>/bookings</code>（教師角色過濾）</span></li>
-                    </ul>
-                </div>
-                <div>
-                    <h3>安全與服務</h3>
-                    <p class="status-pill">JWT 驗證 + CORS 開啟</p>
-                    <div class="tag-row">
-                        <span class="tag">bcrypt 密碼雜湊</span>
-                        <span class="tag">動態會議連結</span>
-                        <span class="tag">docker-compose up --build</span>
-                    </div>
-                </div>
+                </article>
             </div>
+
+            <section class="card">
+                <div class="section-header">
+                    <h3>我的預約</h3>
+                    <span class="status-pill">模擬 GET /bookings</span>
+                </div>
+                <table class="table-preview" id="booking-table">
+                    <thead>
+                        <tr>
+                            <th>學生</th>
+                            <th>老師</th>
+                            <th>時間</th>
+                            <th>平台</th>
+                            <th>連結</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </section>
+        </section>
+
+        <section class="page" data-page="admin">
+            <div class="card-grid two-column">
+                <article class="card">
+                    <h2>平台管理</h2>
+                    <p>依角色或特定帳號查詢所有預約紀錄，對應 <code>/bookings</code> 的管理者視角。</p>
+                    <form id="admin-filter" class="field-group">
+                        <select name="scope">
+                            <option value="all">全部預約</option>
+                            <option value="student">只看學生</option>
+                            <option value="teacher">只看老師</option>
+                        </select>
+                        <input type="text" name="keyword" placeholder="搜尋學生或老師 Email">
+                        <button type="submit">套用篩選</button>
+                    </form>
+                    <div class="status-line" id="admin-status">已套用全部預約</div>
+                </article>
+                <article class="card">
+                    <h2>即時摘要</h2>
+                    <div class="stats-grid" id="admin-stats"></div>
+                    <div class="tag-row">
+                        <span class="tag">GET /bookings?scope=admin</span>
+                        <span class="tag">篩選學生 / 老師</span>
+                        <span class="tag">整合會議連結</span>
+                    </div>
+                </article>
+            </div>
+
+            <section class="card">
+                <div class="section-header">
+                    <h3>預約情況</h3>
+                    <span class="status-pill" id="admin-pill">顯示全部</span>
+                </div>
+                <table class="table-preview" id="admin-table">
+                    <thead>
+                        <tr>
+                            <th>學生</th>
+                            <th>老師</th>
+                            <th>平台</th>
+                            <th>狀態</th>
+                            <th>會議</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </section>
         </section>
     </main>
 
