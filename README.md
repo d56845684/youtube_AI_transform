@@ -14,6 +14,7 @@ This project demonstrates a three-tier architecture for a real-time language tut
 docker-compose up --build
 ```
 Open the frontend at [http://localhost:8080](http://localhost:8080) and the API at [http://localhost:8000/docs](http://localhost:8000/docs).
+Nginx serves the static assets from `frontend/` with a simple health check at [http://localhost:8080/healthz](http://localhost:8080/healthz) to verify the container is reachable.
 
 ## Environment
 Set environment variables (or copy `.env.example`):
