@@ -5,7 +5,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import auth, google_integration, models, schemas
+from . import auth, models, schemas
 from .database import Base, engine, get_db
 
 app = FastAPI(title="Language Tutor Marketplace")
@@ -134,18 +134,22 @@ async def book_availability(
     await db.commit()
     await db.refresh(booking)
 
-    try:
-        await google_integration.sync_booking_to_google(
-            booking=booking,
-            availability=availability,
-            teacher=teacher,
-            student=current_user,
-        )
-    except google_integration.GoogleIntegrationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
-        ) from exc
+    start_dt = datetime.combine(booking.reserved_at.date(), availability.start_time)
+    end_dt = datetime.combine(booking.reserved_at.date(), availability.end_time)
+
+    meeting_record = models.MeetingRecord(
+        booking_id=booking.id,
+        reserved_by_id=current_user.id,
+        platform=booking.platform,
+        conference_link=booking.conference_link,
+        start_at=start_dt,
+        end_at=end_dt,
+        teacher_email=teacher.email,
+        student_email=current_user.email,
+        participant_emails=",".join(sorted({teacher.email, current_user.email})),
+    )
+    db.add(meeting_record)
+    await db.commit()
     return booking
 
 
