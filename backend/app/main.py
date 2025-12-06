@@ -4,6 +4,7 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import or_, select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import auth, google_integration, models, schemas
@@ -53,7 +54,11 @@ def ensure_superuser(user: models.User) -> None:
 async def get_booking_with_permission(
     booking_id: int, current_user: models.User, db: AsyncSession
 ) -> models.LessonBooking:
-    result = await db.execute(select(models.LessonBooking).where(models.LessonBooking.id == booking_id))
+    result = await db.execute(
+        select(models.LessonBooking)
+        .options(selectinload(models.LessonBooking.availability))
+        .where(models.LessonBooking.id == booking_id)
+    )
     booking = result.scalar_one_or_none()
     if booking is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found")
@@ -387,6 +392,7 @@ async def book_availability(
         await db.refresh(google_event)
 
     await db.refresh(booking)
+    await db.refresh(booking, attribute_names=["availability"])
     return booking
 
 
