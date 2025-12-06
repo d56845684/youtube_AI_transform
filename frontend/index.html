@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Language Tutor Marketplace</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f7f7fb; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); max-width: 800px; margin-bottom: 24px; }
+        h1 { color: #2b3a55; }
+        code { background: #eef; padding: 4px 6px; border-radius: 4px; }
+        ul { line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <h1>Language Tutor Marketplace</h1>
+    <div class="card">
+        <h2>Roles</h2>
+        <ul>
+            <li><strong>Students</strong>: purchase lesson credits via <code>/orders</code> and reserve available time slots with teachers.</li>
+            <li><strong>Teachers</strong>: publish availability through <code>/teachers/availability</code> and receive bookings.</li>
+        </ul>
+    </div>
+    <div class="card">
+        <h2>API Quick Start</h2>
+        <ol>
+            <li>Register users via <code>/auth/register</code> (role is <code>student</code> or <code>teacher</code>).</li>
+            <li>Obtain JWT with <code>/auth/token</code> using your email and password.</li>
+            <li>Teachers create availability windows; students fetch them via <code>/teachers/&lt;id&gt;/availability</code>.</li>
+            <li>Students create bookings through <code>/bookings</code> specifying platform (<em>Google Meet</em> or <em>VOOM</em>).</li>
+        </ol>
+    </div>
+    <div class="card">
+        <h2>Dockerized Stack</h2>
+        <ul>
+            <li>Backend: FastAPI + SQLAlchemy with JWT auth.</li>
+            <li>Database: PostgreSQL with primary and foreign keys linking orders, bookings, users, and availabilities.</li>
+            <li>Frontend: this static landing page served by Nginx.</li>
+        </ul>
+        <p>Run the stack with <code>docker-compose up --build</code> and open <code>http://localhost:8080</code>.</p>
+    </div>
+</body>
+</html>
