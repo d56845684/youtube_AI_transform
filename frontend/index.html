@@ -4,40 +4,148 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Language Tutor Marketplace</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; background: #f7f7fb; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); max-width: 800px; margin-bottom: 24px; }
-        h1 { color: #2b3a55; }
-        code { background: #eef; padding: 4px 6px; border-radius: 4px; }
-        ul { line-height: 1.6; }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <h1>Language Tutor Marketplace</h1>
-    <div class="card">
-        <h2>Roles</h2>
-        <ul>
-            <li><strong>Students</strong>: purchase lesson credits via <code>/orders</code> and reserve available time slots with teachers.</li>
-            <li><strong>Teachers</strong>: publish availability through <code>/teachers/availability</code> and receive bookings.</li>
-        </ul>
-    </div>
-    <div class="card">
-        <h2>API Quick Start</h2>
-        <ol>
-            <li>Register users via <code>/auth/register</code> (role is <code>student</code> or <code>teacher</code>).</li>
-            <li>Obtain JWT with <code>/auth/token</code> using your email and password.</li>
-            <li>Teachers create availability windows; students fetch them via <code>/teachers/&lt;id&gt;/availability</code>.</li>
-            <li>Students create bookings through <code>/bookings</code> specifying platform (<em>Google Meet</em> or <em>VOOM</em>).</li>
-        </ol>
-    </div>
-    <div class="card">
-        <h2>Dockerized Stack</h2>
-        <ul>
-            <li>Backend: FastAPI + SQLAlchemy with JWT auth.</li>
-            <li>Database: PostgreSQL with primary and foreign keys linking orders, bookings, users, and availabilities.</li>
-            <li>Frontend: this static landing page served by Nginx.</li>
-        </ul>
-        <p>Run the stack with <code>docker-compose up --build</code> and open <code>http://localhost:8080</code>.</p>
-    </div>
+    <header>
+        <div class="container hero">
+            <div>
+                <div class="badges">
+                    <span class="badge">FastAPI + PostgreSQL</span>
+                    <span class="badge">JWT Auth</span>
+                    <span class="badge">Google Meet / VOOM</span>
+                </div>
+                <h1>Language Tutor Marketplace</h1>
+                <p>讓學生購買課堂點數、預約老師時段，老師維護可教時間，並自動生成線上會議連結的教學平台。</p>
+                <p class="footer-note">啟動 docker-compose 後，前端由 Nginx 提供，後端 API 與資料庫直接串接。</p>
+            </div>
+            <div class="card">
+                <h3>API Quick Start</h3>
+                <ol>
+                    <li>註冊 <code>/auth/register</code>（角色 student 或 teacher）。</li>
+                    <li>登入取得 JWT <code>/auth/token</code>。</li>
+                    <li>教師建立時段 <code>/teachers/availability</code>，學生查詢 <code>/teachers/&lt;id&gt;/availability</code>。</li>
+                    <li>學生下訂單 <code>/orders</code>、用點數預約 <code>/bookings</code> 並指定 Google Meet / VOOM。</li>
+                </ol>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="card-grid">
+            <article class="card">
+                <h2>商業邏輯狀態</h2>
+                <ul class="checklist">
+                    <li><span class="check-icon">✓</span><span>學生下訂單產生課堂點數，並可透過 UI 及 <code>/bookings</code> 預約老師空檔。</span></li>
+                    <li><span class="check-icon">✓</span><span>教師填寫可教學時間 <code>/teachers/availability</code>，等待學生預約。</span></li>
+                    <li><span class="check-icon">✓</span><span>預約時指定平台（Google Meet / VOOM）後自動生成會議連結。</span></li>
+                    <li><span class="check-icon">✓</span><span>資料庫模型涵蓋訂單、上課記錄、會員、優惠碼欄位、預約紀錄與教室預約狀態。</span></li>
+                </ul>
+            </article>
+            <article class="card">
+                <h2>學生預約流程</h2>
+                <div class="timeline" id="timeline"></div>
+                <div class="field-group">
+                    <label for="platform">選擇會議平台</label>
+                    <form id="booking-form" class="field-group">
+                        <div class="field-group">
+                            <input type="text" name="studentId" placeholder="Student ID" value="42">
+                            <input type="text" name="teacherId" placeholder="Teacher ID" value="18">
+                        </div>
+                        <select name="platform" id="platform">
+                            <option>Google Meet</option>
+                            <option>VOOM</option>
+                        </select>
+                        <button type="submit">產生預約連結</button>
+                        <div id="link-preview" aria-live="polite"></div>
+                    </form>
+                </div>
+            </article>
+            <article class="card">
+                <h2>教師可教時間</h2>
+                <p>教師透過表單填寫可教學日與時間，系統會同步到資料庫的 <code>teacher_availabilities</code> 表，學生查詢後直接下單預約。</p>
+                <div class="field-group">
+                    <label>快速建立一組時段</label>
+                    <div class="field-group">
+                        <input type="text" value="星期二" readonly>
+                        <input type="text" value="19:00 - 21:00" readonly>
+                        <button type="button">提交到 API</button>
+                    </div>
+                </div>
+                <div class="tag-row">
+                    <span class="tag">POST /teachers/availability</span>
+                    <span class="tag">JWT 保護</span>
+                </div>
+            </article>
+        </section>
+
+        <section class="card">
+            <h2>資料庫設計（重點表）</h2>
+            <table class="table-preview">
+                <thead>
+                    <tr>
+                        <th>資料表</th>
+                        <th>用途</th>
+                        <th>關聯</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>users</td>
+                        <td>學生 / 教師會員，角色分離</td>
+                        <td>與 orders、teacher_availabilities、lesson_bookings 連結</td>
+                    </tr>
+                    <tr>
+                        <td>orders</td>
+                        <td>紀錄訂單金額、課堂點數、優惠碼</td>
+                        <td>student_id → users</td>
+                    </tr>
+                    <tr>
+                        <td>teacher_availabilities</td>
+                        <td>教師可預約時段、預約狀態</td>
+                        <td>teacher_id → users；與 lesson_bookings 一對一</td>
+                    </tr>
+                    <tr>
+                        <td>lesson_bookings</td>
+                        <td>學生預約紀錄，含會議連結與上課時間</td>
+                        <td>student_id / teacher_id → users；availability_id → teacher_availabilities</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p class="footer-note">所有表皆透過 SQLAlchemy 建立，支援主外鍵、預約狀態與時間戳記。</p>
+        </section>
+
+        <section class="card">
+            <h2>資料流對照</h2>
+            <div class="card-grid">
+                <div>
+                    <h3>學生端</h3>
+                    <ul class="checklist">
+                        <li><span class="check-icon">✓</span><span>購買點數：POST <code>/orders</code></span></li>
+                        <li><span class="check-icon">✓</span><span>查詢老師空檔：GET <code>/teachers/{id}/availability</code></span></li>
+                        <li><span class="check-icon">✓</span><span>預約並生成會議室：POST <code>/bookings</code></span></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3>教師端</h3>
+                    <ul class="checklist">
+                        <li><span class="check-icon">✓</span><span>填寫教學時間：POST <code>/teachers/availability</code></span></li>
+                        <li><span class="check-icon">✓</span><span>查看預約：GET <code>/bookings</code>（教師角色過濾）</span></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3>安全與服務</h3>
+                    <p class="status-pill">JWT 驗證 + CORS 開啟</p>
+                    <div class="tag-row">
+                        <span class="tag">bcrypt 密碼雜湊</span>
+                        <span class="tag">動態會議連結</span>
+                        <span class="tag">docker-compose up --build</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="script.js"></script>
 </body>
 </html>
