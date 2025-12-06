@@ -10,7 +10,9 @@ This project demonstrates a three-tier architecture for a real-time language tut
 - Docker Compose brings up PostgreSQL, the backend API, and the static frontend.
 
 ## Running locally
+Create a `.env` file (you can copy `.env.example`) so Docker Compose can inject configuration into the database and backend containers:
 ```bash
+cp .env.example .env
 docker-compose up --build
 ```
 Open the frontend at [http://localhost:8080](http://localhost:8080) and the API at [http://localhost:8000/docs](http://localhost:8000/docs).

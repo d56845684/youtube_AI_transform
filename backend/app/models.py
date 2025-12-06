@@ -1,9 +1,12 @@
-from datetime import datetime, time
+from datetime import datetime, timedelta, timezone
 from enum import Enum
-from sqlalchemy import Column, DateTime, Enum as PgEnum, ForeignKey, Integer, Numeric, String, Time
+from sqlalchemy import Column, DateTime, Enum as PgEnum, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import relationship
 
 from .database import Base
+
+
+UTC_PLUS_8 = timezone(timedelta(hours=8))
 
 
 class UserRole(str, Enum):
@@ -20,7 +23,9 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=False)
     role = Column(PgEnum(UserRole, name="user_role"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC_PLUS_8), nullable=False
+    )
 
     availabilities = relationship("TeacherAvailability", back_populates="teacher", cascade="all, delete")
     bookings = relationship("LessonBooking", back_populates="student", foreign_keys="LessonBooking.student_id")
@@ -34,8 +39,8 @@ class TeacherAvailability(Base):
     id = Column(Integer, primary_key=True)
     teacher_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     weekday = Column(String, nullable=False)
-    start_time = Column(Time, nullable=False)
-    end_time = Column(Time, nullable=False)
+    start_time = Column(DateTime(timezone=True), nullable=False)
+    end_time = Column(DateTime(timezone=True), nullable=False)
     is_booked = Column(Integer, default=0, nullable=False)
 
     teacher = relationship("User", back_populates="availabilities")
@@ -49,7 +54,9 @@ class Order(Base):
     student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     order_total = Column(Numeric(10, 2), nullable=False)
     lesson_credits = Column(Integer, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC_PLUS_8), nullable=False
+    )
     coupon_code = Column(String, nullable=True)
 
     student = relationship("User", back_populates="orders")
@@ -62,7 +69,9 @@ class LessonBooking(Base):
     availability_id = Column(Integer, ForeignKey("teacher_availabilities.id", ondelete="SET NULL"), nullable=True)
     student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     teacher_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    reserved_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    reserved_at = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC_PLUS_8), nullable=False
+    )
     platform = Column(String, nullable=False, default="Google Meet")
     conference_link = Column(String, nullable=False)
 
@@ -81,8 +90,8 @@ class MeetingRecord(Base):
     reserved_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     platform = Column(String, nullable=False)
     conference_link = Column(String, nullable=False)
-    start_at = Column(DateTime, nullable=False)
-    end_at = Column(DateTime, nullable=False)
+    start_at = Column(DateTime(timezone=True), nullable=False)
+    end_at = Column(DateTime(timezone=True), nullable=False)
     teacher_email = Column(String, nullable=False)
     student_email = Column(String, nullable=False)
     participant_emails = Column(String, nullable=True)
@@ -103,8 +112,8 @@ class GoogleCalendarEvent(Base):
     summary = Column(String, nullable=False)
     description = Column(String, nullable=True)
     meet_link = Column(String, nullable=True)
-    start_at = Column(DateTime, nullable=False)
-    end_at = Column(DateTime, nullable=False)
+    start_at = Column(DateTime(timezone=True), nullable=False)
+    end_at = Column(DateTime(timezone=True), nullable=False)
     creator_email = Column(String, nullable=False)
     attendee_emails = Column(String, nullable=True)
 
