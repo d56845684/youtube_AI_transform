@@ -306,7 +306,7 @@ async def book_availability(
     ensure_student(current_user)
     google_event: models.GoogleCalendarEvent | None = None
 
-    async with db.begin():
+    try:
         availability_result = await db.execute(
             select(models.TeacherAvailability).where(models.TeacherAvailability.id == payload.availability_id)
         )
@@ -346,12 +346,14 @@ async def book_availability(
                     reserved_by_email=current_user.email,
                 )
             except google_integration.GoogleIntegrationError as exc:
+                await db.rollback()
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail="Failed to generate Google Meet link",
                 ) from exc
 
             if not google_event.meet_link:
+                await db.rollback()
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail="Google Meet link was not generated",
@@ -375,6 +377,11 @@ async def book_availability(
             participant_emails=",".join(sorted({teacher.email, current_user.email})),
         )
         db.add(meeting_record)
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
 
     if google_event:
         await db.refresh(google_event)
@@ -418,7 +425,7 @@ async def delete_booking(
     current_user: models.User = Depends(auth.get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    async with db.begin():
+    try:
         booking = await get_booking_with_permission(booking_id, current_user, db)
 
         if booking.availability_id:
@@ -444,6 +451,10 @@ async def delete_booking(
             await db.delete(meeting_record)
 
         await db.delete(booking)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
 
     return None
 
