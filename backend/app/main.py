@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-from . import auth, models, schemas
+from . import auth, google_integration, models, schemas
 from .database import Base, engine, get_db
 
 Base.metadata.create_all(bind=engine)
@@ -110,11 +110,25 @@ def book_availability(
         availability_id=availability.id,
         student_id=current_user.id,
         teacher_id=teacher.id,
+        platform=payload.platform,
         conference_link=conference_link,
     )
     db.add(booking)
     db.commit()
     db.refresh(booking)
+
+    try:
+        google_integration.sync_booking_to_google(
+            booking=booking,
+            availability=availability,
+            teacher=teacher,
+            student=current_user,
+        )
+    except google_integration.GoogleIntegrationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        )
     return booking
 
 

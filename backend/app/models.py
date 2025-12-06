@@ -62,6 +62,7 @@ class LessonBooking(Base):
     student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     teacher_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     reserved_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    platform = Column(String, nullable=False, default="Google Meet")
     conference_link = Column(String, nullable=False)
 
     availability = relationship("TeacherAvailability", back_populates="booking")

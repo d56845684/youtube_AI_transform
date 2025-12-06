@@ -64,6 +64,7 @@ class BookingOut(BaseModel):
     availability: Optional[AvailabilityOut]
     student_id: int
     teacher_id: int
+    platform: str
     conference_link: str
     reserved_at: datetime
 
