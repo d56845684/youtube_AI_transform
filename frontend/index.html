@@ -83,17 +83,19 @@
             <div class="card-grid two-column">
                 <article class="card">
                     <h2>查看可預約時段</h2>
-                    <p>左側列表模擬 <code>/teachers/{id}/availability</code> 的回傳結果。</p>
+                    <p>直接呼叫 <code>/teachers/{id}/availability</code>，並回退到示範資料。</p>
                     <div class="timeline" id="timeline"></div>
+                    <div class="status-line" id="timeline-status"></div>
                 </article>
                 <article class="card">
                     <h2>進行預約</h2>
-                    <p>填入學生與老師資訊，即會生成對應會議平台的連結。</p>
+                    <p>填入學生與老師資訊，即會透過 API 產生會議連結。</p>
                     <form id="booking-form" class="field-group">
                         <div class="field-group two-column">
                             <input type="text" name="studentId" placeholder="Student ID" value="42">
                             <input type="text" name="teacherId" placeholder="Teacher ID" value="18">
                         </div>
+                        <input type="number" name="availabilityId" placeholder="Availability ID" required>
                         <select name="platform" id="platform">
                             <option>Google Meet</option>
                             <option>VOOM</option>

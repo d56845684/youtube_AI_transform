@@ -262,6 +262,11 @@ button:active {
     font-size: 14px;
 }
 
+.status-line.error,
+#link-preview.error {
+    color: #b91c1c;
+}
+
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
