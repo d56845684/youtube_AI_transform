@@ -304,25 +304,25 @@ async def book_availability(
     current_user: models.User = Depends(auth.get_current_user),
 ):
     ensure_student(current_user)
-    availability_result = await db.execute(
-        select(models.TeacherAvailability).where(models.TeacherAvailability.id == payload.availability_id)
-    )
-    availability = availability_result.scalar_one_or_none()
-    if availability is None or availability.is_booked:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability not found or already booked")
-
-    teacher_result = await db.execute(select(models.User).where(models.User.id == availability.teacher_id))
-    teacher = teacher_result.scalar_one_or_none()
-    if teacher is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Teacher unavailable")
-
-    platform_domain = "meet.google.com" if payload.platform == "Google Meet" else "voom.com"
-    now_ts = int(datetime.now(tz=models.UTC_PLUS_8).timestamp())
-    fallback_link = f"https://{platform_domain}/{teacher.id}-{current_user.id}-{now_ts}"
-
     google_event: models.GoogleCalendarEvent | None = None
 
     async with db.begin():
+        availability_result = await db.execute(
+            select(models.TeacherAvailability).where(models.TeacherAvailability.id == payload.availability_id)
+        )
+        availability = availability_result.scalar_one_or_none()
+        if availability is None or availability.is_booked:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability not found or already booked")
+
+        teacher_result = await db.execute(select(models.User).where(models.User.id == availability.teacher_id))
+        teacher = teacher_result.scalar_one_or_none()
+        if teacher is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Teacher unavailable")
+
+        platform_domain = "meet.google.com" if payload.platform == "Google Meet" else "voom.com"
+        now_ts = int(datetime.now(tz=models.UTC_PLUS_8).timestamp())
+        fallback_link = f"https://{platform_domain}/{teacher.id}-{current_user.id}-{now_ts}"
+
         availability.is_booked = 1
 
         booking = models.LessonBooking(
@@ -418,9 +418,9 @@ async def delete_booking(
     current_user: models.User = Depends(auth.get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    booking = await get_booking_with_permission(booking_id, current_user, db)
-
     async with db.begin():
+        booking = await get_booking_with_permission(booking_id, current_user, db)
+
         if booking.availability_id:
             availability_result = await db.execute(
                 select(models.TeacherAvailability).where(models.TeacherAvailability.id == booking.availability_id)
