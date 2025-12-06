@@ -12,13 +12,38 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import httpx
 import pytest
 
 
 BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8000")
-CREDENTIALS_FILE = os.getenv("GOOGLE_OAUTH_CREDENTIALS_FILE", "credentials.json")
+
+
+def _find_credentials_file() -> Path | None:
+    """Return the first usable Google OAuth credentials file, if present.
+
+    The lookup order is:
+    1. ``$GOOGLE_OAUTH_CREDENTIALS_FILE`` (expanded for ``~``)
+    2. ``backend/credentials.json`` (alongside the backend code)
+    3. ``./credentials.json`` (where pytest was invoked)
+    """
+
+    candidates = []
+
+    env_path = os.getenv("GOOGLE_OAUTH_CREDENTIALS_FILE")
+    if env_path:
+        candidates.append(Path(env_path).expanduser())
+
+    repo_default = Path(__file__).resolve().parent.parent / "credentials.json"
+    candidates.append(repo_default)
+    candidates.append(Path.cwd() / "credentials.json")
+
+    for path in candidates:
+        if path.is_file():
+            return path
+    return None
 
 
 def _auth_headers(token: str) -> dict[str, str]:
@@ -38,9 +63,11 @@ async def _ensure_backend_available(client: httpx.AsyncClient) -> None:
 @pytest.mark.integration
 @pytest.mark.asyncio(scope="session")
 async def test_google_meet_booking_flow() -> None:
-    if not os.path.exists(CREDENTIALS_FILE):
+    credentials_path = _find_credentials_file()
+    if not credentials_path:
         pytest.skip(
-            "Google OAuth credentials file missing; provide GOOGLE_OAUTH_CREDENTIALS_FILE to run."
+            "Google OAuth credentials file not found in $GOOGLE_OAUTH_CREDENTIALS_FILE, "
+            "backend/credentials.json, or ./credentials.json."
         )
 
     unique_suffix = uuid.uuid4().hex[:8]
