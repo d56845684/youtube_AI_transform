@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr, constr
 class UserRole(str, Enum):
     student = "student"
     teacher = "teacher"
+    superuser = "superuser"
 
 
 class UserCreate(BaseModel):

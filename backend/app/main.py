@@ -30,12 +30,12 @@ app.add_middleware(
 
 
 def ensure_teacher(user: models.User) -> None:
-    if user.role != models.UserRole.TEACHER:
+    if user.role not in {models.UserRole.TEACHER, models.UserRole.SUPERUSER}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher role required")
 
 
 def ensure_student(user: models.User) -> None:
-    if user.role != models.UserRole.STUDENT:
+    if user.role not in {models.UserRole.STUDENT, models.UserRole.SUPERUSER}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Student role required")
 
 
@@ -196,12 +196,30 @@ async def create_order(
     return order
 
 
+@app.get("/orders", response_model=list[schemas.OrderOut])
+async def list_orders(
+    db: AsyncSession = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)
+):
+    ensure_student(current_user)
+    if current_user.role == models.UserRole.SUPERUSER:
+        result = await db.execute(select(models.Order))
+    else:
+        result = await db.execute(select(models.Order).where(models.Order.student_id == current_user.id))
+    return result.scalars().all()
+
+
 @app.get("/bookings", response_model=list[schemas.BookingOut])
 async def list_bookings(
     current_user: models.User = Depends(auth.get_current_user), db: AsyncSession = Depends(get_db)
 ):
-    if current_user.role == models.UserRole.TEACHER:
-        result = await db.execute(select(models.LessonBooking).where(models.LessonBooking.teacher_id == current_user.id))
+    if current_user.role == models.UserRole.SUPERUSER:
+        result = await db.execute(select(models.LessonBooking))
+    elif current_user.role == models.UserRole.TEACHER:
+        result = await db.execute(
+            select(models.LessonBooking).where(models.LessonBooking.teacher_id == current_user.id)
+        )
     else:
-        result = await db.execute(select(models.LessonBooking).where(models.LessonBooking.student_id == current_user.id))
+        result = await db.execute(
+            select(models.LessonBooking).where(models.LessonBooking.student_id == current_user.id)
+        )
     return result.scalars().all()
