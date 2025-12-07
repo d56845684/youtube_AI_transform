@@ -55,6 +55,12 @@ def derive_weekday_name(avail_date: date) -> str:
     return avail_date.strftime("%a")
 
 
+def ensure_time_with_timezone(slot_time: time) -> time:
+    if slot_time.tzinfo is None:
+        return slot_time.replace(tzinfo=models.UTC_PLUS_8)
+    return slot_time.astimezone(models.UTC_PLUS_8).timetz()
+
+
 async def assert_no_overlapping_slots(
     *,
     db: AsyncSession,
@@ -64,6 +70,9 @@ async def assert_no_overlapping_slots(
     end_time: time,
     exclude_id: int | None = None,
 ) -> None:
+    start_time = ensure_time_with_timezone(start_time)
+    end_time = ensure_time_with_timezone(end_time)
+
     query = select(models.TeacherAvailability).where(
         models.TeacherAvailability.teacher_id == teacher_id,
         models.TeacherAvailability.availability_date == availability_date,
@@ -253,20 +262,23 @@ async def create_availability(
             detail="End time must be later than start time",
         )
 
+    normalized_start = ensure_time_with_timezone(payload.start_time)
+    normalized_end = ensure_time_with_timezone(payload.end_time)
+
     await assert_no_overlapping_slots(
         db=db,
         teacher_id=current_user.id,
         availability_date=payload.availability_date,
-        start_time=payload.start_time,
-        end_time=payload.end_time,
+        start_time=normalized_start,
+        end_time=normalized_end,
     )
 
     availability = models.TeacherAvailability(
         teacher_id=current_user.id,
         availability_date=payload.availability_date,
         weekday=derive_weekday_name(payload.availability_date),
-        start_time=payload.start_time,
-        end_time=payload.end_time,
+        start_time=normalized_start,
+        end_time=normalized_end,
     )
     db.add(availability)
     await db.commit()
@@ -329,8 +341,16 @@ async def update_availability(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to update availability")
 
     availability_date = payload.availability_date or availability.availability_date
-    start_time = payload.start_time or availability.start_time
-    end_time = payload.end_time or availability.end_time
+    start_time = (
+        ensure_time_with_timezone(payload.start_time)
+        if payload.start_time is not None
+        else availability.start_time
+    )
+    end_time = (
+        ensure_time_with_timezone(payload.end_time)
+        if payload.end_time is not None
+        else availability.end_time
+    )
 
     if start_time >= end_time:
         raise HTTPException(
@@ -351,9 +371,9 @@ async def update_availability(
         availability.availability_date = payload.availability_date
         availability.weekday = derive_weekday_name(payload.availability_date)
     if payload.start_time is not None:
-        availability.start_time = payload.start_time
+        availability.start_time = start_time
     if payload.end_time is not None:
-        availability.end_time = payload.end_time
+        availability.end_time = end_time
     if payload.is_booked is not None:
         availability.is_booked = payload.is_booked
 
