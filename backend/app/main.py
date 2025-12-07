@@ -648,15 +648,18 @@ async def delete_order(
 async def list_bookings(
     current_user: models.User = Depends(auth.get_current_user), db: AsyncSession = Depends(get_db)
 ):
+    base_query = select(models.LessonBooking).options(
+        selectinload(models.LessonBooking.availability)
+    )
     if current_user.role == models.UserRole.SUPERUSER:
-        result = await db.execute(select(models.LessonBooking))
+        result = await db.execute(base_query)
     elif current_user.role == models.UserRole.TEACHER:
         result = await db.execute(
-            select(models.LessonBooking).where(models.LessonBooking.teacher_id == current_user.id)
+            base_query.where(models.LessonBooking.teacher_id == current_user.id)
         )
     else:
         result = await db.execute(
-            select(models.LessonBooking).where(models.LessonBooking.student_id == current_user.id)
+            base_query.where(models.LessonBooking.student_id == current_user.id)
         )
     return result.scalars().all()
 
