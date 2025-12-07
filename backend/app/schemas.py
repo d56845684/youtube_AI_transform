@@ -103,6 +103,7 @@ class BookingOut(BaseModel):
     teacher: Optional[UserPublic]
     platform: str
     conference_link: str
+    zoom_recording: Optional["ZoomRecordingOut"]
     status: BookingStatus
     status_desc: Optional[str]
     reserved_at: datetime
@@ -210,6 +211,30 @@ class CalendarEventUpdate(BaseModel):
     attendee_emails: Optional[str]
 
 
+class ZoomRecordingRequest(BaseModel):
+    share_email: EmailStr
+    meeting_id: Optional[str] = None
+
+
+class ZoomRecordingOut(BaseModel):
+    id: int
+    booking_id: int
+    meeting_id: str
+    file_name: Optional[str]
+    recording_download_url: Optional[str]
+    drive_file_id: Optional[str]
+    drive_share_link: Optional[str]
+    shared_with_email: Optional[str]
+    start_url: Optional[str]
+    join_url: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: Optional[datetime]
+
+    class Config:
+        orm_mode = True
+
+
 class CalendarEventOut(BaseModel):
     id: int
     booking_id: int
@@ -234,3 +259,5 @@ class UserUpdate(BaseModel):
     full_name: Optional[constr(min_length=1)]
     role: Optional[UserRole]
     password: Optional[constr(min_length=8)]
+
+BookingOut.update_forward_refs(ZoomRecordingOut=ZoomRecordingOut)

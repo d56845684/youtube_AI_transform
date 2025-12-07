@@ -1,10 +1,7 @@
 import base64
 import os
 from datetime import datetime, timezone
-
-import base64
-import os
-from datetime import datetime, timezone
+from urllib.parse import quote
 
 import requests
 
@@ -45,6 +42,54 @@ def _get_zoom_access_token() -> str:
     if not token:
         raise ZoomIntegrationError("Zoom access token missing in response")
     return token
+
+
+def _pick_recording_file(recording_files: list[dict]) -> dict | None:
+    for file in recording_files:
+        if file.get("file_type") == "MP4":
+            return file
+    return recording_files[0] if recording_files else None
+
+
+def download_meeting_recording(meeting_id: str) -> dict:
+    """Download the primary Zoom cloud recording for a meeting."""
+
+    access_token = _get_zoom_access_token()
+    encoded_meeting_id = quote(meeting_id, safe="")
+    url = f"https://api.zoom.us/v2/meetings/{encoded_meeting_id}/recordings"
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        raise ZoomIntegrationError("Failed to list Zoom recordings") from exc
+
+    recording_files = resp.json().get("recording_files", [])
+    target_file = _pick_recording_file(recording_files)
+    if not target_file:
+        raise ZoomIntegrationError("No Zoom recordings available for this meeting")
+
+    download_url = target_file.get("download_url")
+    if not download_url:
+        raise ZoomIntegrationError("Zoom recording download URL missing")
+
+    try:
+        download_resp = requests.get(download_url, headers=headers, timeout=30)
+        download_resp.raise_for_status()
+    except requests.RequestException as exc:
+        raise ZoomIntegrationError("Failed to download Zoom recording") from exc
+
+    file_name = target_file.get("file_name") or f"zoom-recording-{meeting_id}.mp4"
+    mime_type = target_file.get("file_type")
+    mime_type = "video/mp4" if mime_type == "MP4" or not mime_type else f"video/{mime_type.lower()}"
+
+    return {
+        "file_name": file_name,
+        "mime_type": mime_type,
+        "download_url": download_url,
+        "content": download_resp.content,
+    }
 
 
 def create_zoom_meeting(
