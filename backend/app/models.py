@@ -19,13 +19,25 @@ from .database import Base
 UTC_PLUS_8 = timezone(timedelta(hours=8))
 
 
+def now_in_utc_plus_8() -> datetime:
+    return datetime.now(UTC_PLUS_8)
+
+
+class TimestampMixin:
+    created_at = Column(DateTime(timezone=True), default=now_in_utc_plus_8, nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), default=now_in_utc_plus_8, onupdate=now_in_utc_plus_8, nullable=False
+    )
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+
+
 class UserRole(str, Enum):
     STUDENT = "student"
     TEACHER = "teacher"
     SUPERUSER = "superuser"
 
 
-class User(Base):
+class User(TimestampMixin, Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -33,9 +45,6 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=False)
     role = Column(PgEnum(UserRole, name="user_role"), nullable=False)
-    created_at = Column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC_PLUS_8), nullable=False
-    )
 
     availabilities = relationship("TeacherAvailability", back_populates="teacher", cascade="all, delete")
     bookings = relationship("LessonBooking", back_populates="student", foreign_keys="LessonBooking.student_id")
@@ -43,7 +52,7 @@ class User(Base):
     orders = relationship("Order", back_populates="student", cascade="all, delete")
 
 
-class TeacherAvailability(Base):
+class TeacherAvailability(TimestampMixin, Base):
     __tablename__ = "teacher_availabilities"
 
     id = Column(Integer, primary_key=True)
@@ -58,22 +67,19 @@ class TeacherAvailability(Base):
     booking = relationship("LessonBooking", back_populates="availability", uselist=False)
 
 
-class Order(Base):
+class Order(TimestampMixin, Base):
     __tablename__ = "orders"
 
     id = Column(Integer, primary_key=True)
     student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     order_total = Column(Numeric(10, 2), nullable=False)
     lesson_credits = Column(Integer, nullable=False)
-    created_at = Column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC_PLUS_8), nullable=False
-    )
     coupon_code = Column(String, nullable=True)
 
     student = relationship("User", back_populates="orders")
 
 
-class LessonBooking(Base):
+class LessonBooking(TimestampMixin, Base):
     __tablename__ = "lesson_bookings"
 
     id = Column(Integer, primary_key=True)
@@ -91,7 +97,7 @@ class LessonBooking(Base):
     teacher = relationship("User", foreign_keys=[teacher_id], back_populates="lessons")
 
 
-class MeetingRecord(Base):
+class MeetingRecord(TimestampMixin, Base):
     __tablename__ = "meeting_records"
 
     id = Column(Integer, primary_key=True)
@@ -111,7 +117,7 @@ class MeetingRecord(Base):
     reserved_by = relationship("User")
 
 
-class GoogleCalendarEvent(Base):
+class GoogleCalendarEvent(TimestampMixin, Base):
     __tablename__ = "google_calendar_events"
 
     id = Column(Integer, primary_key=True)

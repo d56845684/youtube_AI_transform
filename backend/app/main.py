@@ -116,11 +116,20 @@ async def get_booking_with_permission(
 ) -> models.LessonBooking:
     result = await db.execute(
         select(models.LessonBooking)
-        .options(selectinload(models.LessonBooking.availability))
-        .where(models.LessonBooking.id == booking_id)
+        .options(
+            selectinload(models.LessonBooking.availability).selectinload(
+                models.TeacherAvailability.teacher
+            ),
+            selectinload(models.LessonBooking.student),
+            selectinload(models.LessonBooking.teacher),
+        )
+        .where(
+            models.LessonBooking.id == booking_id,
+            models.LessonBooking.deleted_at.is_(None),
+        )
     )
     booking = result.scalar_one_or_none()
-    if booking is None:
+    if booking is None or booking.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found")
 
     if current_user.role == models.UserRole.SUPERUSER:
@@ -134,7 +143,12 @@ async def get_booking_with_permission(
 async def get_order_with_permission(
     order_id: int, current_user: models.User, db: AsyncSession
 ) -> models.Order:
-    result = await db.execute(select(models.Order).where(models.Order.id == order_id))
+    result = await db.execute(
+        select(models.Order).where(
+            models.Order.id == order_id,
+            models.Order.deleted_at.is_(None),
+        )
+    )
     order = result.scalar_one_or_none()
     if order is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
@@ -186,7 +200,7 @@ async def list_users(
     current_user: models.User = Depends(auth.get_current_user), db: AsyncSession = Depends(get_db)
 ):
     ensure_superuser(current_user)
-    result = await db.execute(select(models.User))
+    result = await db.execute(select(models.User).where(models.User.deleted_at.is_(None)))
     return result.scalars().all()
 
 
@@ -199,11 +213,25 @@ async def get_user(
     if current_user.role != models.UserRole.SUPERUSER and current_user.id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to view this user")
 
-    result = await db.execute(select(models.User).where(models.User.id == user_id))
+    result = await db.execute(
+        select(models.User).where(models.User.id == user_id, models.User.deleted_at.is_(None))
+    )
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
+
+
+@app.get("/teachers", response_model=list[schemas.UserPublic], tags=["Users"])
+async def list_teachers(search: str | None = None, db: AsyncSession = Depends(get_db)):
+    query = select(models.User).where(
+        models.User.role == models.UserRole.TEACHER,
+        models.User.deleted_at.is_(None),
+    )
+    if search:
+        query = query.where(models.User.full_name.ilike(f"%{search}%"))
+    result = await db.execute(query)
+    return result.scalars().all()
 
 
 @app.put("/users/{user_id}", response_model=schemas.UserOut, tags=["Users"])
@@ -216,7 +244,9 @@ async def update_user(
     if current_user.role != models.UserRole.SUPERUSER and current_user.id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to update this user")
 
-    result = await db.execute(select(models.User).where(models.User.id == user_id))
+    result = await db.execute(
+        select(models.User).where(models.User.id == user_id, models.User.deleted_at.is_(None))
+    )
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -241,11 +271,13 @@ async def delete_user(
     db: AsyncSession = Depends(get_db),
 ):
     ensure_superuser(current_user)
-    result = await db.execute(select(models.User).where(models.User.id == user_id))
+    result = await db.execute(
+        select(models.User).where(models.User.id == user_id, models.User.deleted_at.is_(None))
+    )
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    await db.delete(user)
+    user.deleted_at = models.now_in_utc_plus_8()
     await db.commit()
     return None
 
@@ -294,7 +326,12 @@ async def create_availability(
 )
 async def list_availability(teacher_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(models.TeacherAvailability).where(models.TeacherAvailability.teacher_id == teacher_id)
+        select(models.TeacherAvailability)
+        .options(selectinload(models.TeacherAvailability.teacher))
+        .where(
+            models.TeacherAvailability.teacher_id == teacher_id,
+            models.TeacherAvailability.deleted_at.is_(None),
+        )
     )
     return result.scalars().all()
 
@@ -310,7 +347,12 @@ async def get_availability(
     current_user: models.User = Depends(auth.get_current_user),
 ):
     result = await db.execute(
-        select(models.TeacherAvailability).where(models.TeacherAvailability.id == availability_id)
+        select(models.TeacherAvailability)
+        .options(selectinload(models.TeacherAvailability.teacher))
+        .where(
+            models.TeacherAvailability.id == availability_id,
+            models.TeacherAvailability.deleted_at.is_(None),
+        )
     )
     availability = result.scalar_one_or_none()
     if availability is None:
@@ -333,7 +375,12 @@ async def update_availability(
 ):
     ensure_teacher(current_user)
     result = await db.execute(
-        select(models.TeacherAvailability).where(models.TeacherAvailability.id == availability_id)
+        select(models.TeacherAvailability)
+        .options(selectinload(models.TeacherAvailability.teacher))
+        .where(
+            models.TeacherAvailability.id == availability_id,
+            models.TeacherAvailability.deleted_at.is_(None),
+        )
     )
     availability = result.scalar_one_or_none()
     if availability is None:
@@ -395,7 +442,10 @@ async def delete_availability(
 ):
     ensure_teacher(current_user)
     result = await db.execute(
-        select(models.TeacherAvailability).where(models.TeacherAvailability.id == availability_id)
+        select(models.TeacherAvailability).where(
+            models.TeacherAvailability.id == availability_id,
+            models.TeacherAvailability.deleted_at.is_(None),
+        )
     )
     availability = result.scalar_one_or_none()
     if availability is None:
@@ -403,7 +453,7 @@ async def delete_availability(
     if current_user.role != models.UserRole.SUPERUSER and availability.teacher_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to delete availability")
 
-    await db.delete(availability)
+    availability.deleted_at = models.now_in_utc_plus_8()
     await db.commit()
     return None
 
@@ -419,13 +469,23 @@ async def book_availability(
 
     try:
         availability_result = await db.execute(
-            select(models.TeacherAvailability).where(models.TeacherAvailability.id == payload.availability_id)
+            select(models.TeacherAvailability)
+            .options(selectinload(models.TeacherAvailability.teacher))
+            .where(
+                models.TeacherAvailability.id == payload.availability_id,
+                models.TeacherAvailability.deleted_at.is_(None),
+            )
         )
         availability = availability_result.scalar_one_or_none()
         if availability is None or availability.is_booked:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability not found or already booked")
 
-        teacher_result = await db.execute(select(models.User).where(models.User.id == availability.teacher_id))
+        teacher_result = await db.execute(
+            select(models.User).where(
+                models.User.id == availability.teacher_id,
+                models.User.deleted_at.is_(None),
+            )
+        )
         teacher = teacher_result.scalar_one_or_none()
         if teacher is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Teacher unavailable")
@@ -497,7 +557,7 @@ async def book_availability(
         await db.refresh(google_event)
 
     await db.refresh(booking)
-    await db.refresh(booking, attribute_names=["availability"])
+    await db.refresh(booking, attribute_names=["availability", "student", "teacher"])
     return booking
 
 
@@ -548,20 +608,26 @@ async def delete_booking(
                 availability.is_booked = 0
 
         event_result = await db.execute(
-            select(models.GoogleCalendarEvent).where(models.GoogleCalendarEvent.booking_id == booking.id)
+            select(models.GoogleCalendarEvent).where(
+                models.GoogleCalendarEvent.booking_id == booking.id,
+                models.GoogleCalendarEvent.deleted_at.is_(None),
+            )
         )
         calendar_event = event_result.scalar_one_or_none()
         if calendar_event:
-            await db.delete(calendar_event)
+            calendar_event.deleted_at = models.now_in_utc_plus_8()
 
         record_result = await db.execute(
-            select(models.MeetingRecord).where(models.MeetingRecord.booking_id == booking.id)
+            select(models.MeetingRecord).where(
+                models.MeetingRecord.booking_id == booking.id,
+                models.MeetingRecord.deleted_at.is_(None),
+            )
         )
         meeting_record = record_result.scalar_one_or_none()
         if meeting_record:
-            await db.delete(meeting_record)
+            meeting_record.deleted_at = models.now_in_utc_plus_8()
 
-        await db.delete(booking)
+        booking.deleted_at = models.now_in_utc_plus_8()
         await db.commit()
     except Exception:
         await db.rollback()
@@ -595,9 +661,13 @@ async def list_orders(
 ):
     ensure_student(current_user)
     if current_user.role == models.UserRole.SUPERUSER:
-        result = await db.execute(select(models.Order))
+        result = await db.execute(select(models.Order).where(models.Order.deleted_at.is_(None)))
     else:
-        result = await db.execute(select(models.Order).where(models.Order.student_id == current_user.id))
+        result = await db.execute(
+            select(models.Order).where(
+                models.Order.student_id == current_user.id, models.Order.deleted_at.is_(None)
+            )
+        )
     return result.scalars().all()
 
 
@@ -639,7 +709,7 @@ async def delete_order(
     current_user: models.User = Depends(auth.get_current_user),
 ):
     order = await get_order_with_permission(order_id, current_user, db)
-    await db.delete(order)
+    order.deleted_at = models.now_in_utc_plus_8()
     await db.commit()
     return None
 
@@ -648,8 +718,16 @@ async def delete_order(
 async def list_bookings(
     current_user: models.User = Depends(auth.get_current_user), db: AsyncSession = Depends(get_db)
 ):
-    base_query = select(models.LessonBooking).options(
-        selectinload(models.LessonBooking.availability)
+    base_query = (
+        select(models.LessonBooking)
+        .options(
+            selectinload(models.LessonBooking.availability).selectinload(
+                models.TeacherAvailability.teacher
+            ),
+            selectinload(models.LessonBooking.student),
+            selectinload(models.LessonBooking.teacher),
+        )
+        .where(models.LessonBooking.deleted_at.is_(None))
     )
     if current_user.role == models.UserRole.SUPERUSER:
         result = await db.execute(base_query)
@@ -675,6 +753,7 @@ async def list_meeting_records(
     query = select(models.MeetingRecord).join(
         models.LessonBooking, models.MeetingRecord.booking_id == models.LessonBooking.id
     )
+    query = query.where(models.MeetingRecord.deleted_at.is_(None))
     if current_user.role != models.UserRole.SUPERUSER:
         query = query.where(
             or_(
@@ -725,7 +804,11 @@ async def get_meeting_record(
     current_user: models.User = Depends(auth.get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(models.MeetingRecord).where(models.MeetingRecord.id == record_id))
+    result = await db.execute(
+        select(models.MeetingRecord).where(
+            models.MeetingRecord.id == record_id, models.MeetingRecord.deleted_at.is_(None)
+        )
+    )
     record = result.scalar_one_or_none()
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting record not found")
@@ -744,7 +827,11 @@ async def update_meeting_record(
     current_user: models.User = Depends(auth.get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(models.MeetingRecord).where(models.MeetingRecord.id == record_id))
+    result = await db.execute(
+        select(models.MeetingRecord).where(
+            models.MeetingRecord.id == record_id, models.MeetingRecord.deleted_at.is_(None)
+        )
+    )
     record = result.scalar_one_or_none()
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting record not found")
@@ -782,13 +869,17 @@ async def delete_meeting_record(
     current_user: models.User = Depends(auth.get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(models.MeetingRecord).where(models.MeetingRecord.id == record_id))
+    result = await db.execute(
+        select(models.MeetingRecord).where(
+            models.MeetingRecord.id == record_id, models.MeetingRecord.deleted_at.is_(None)
+        )
+    )
     record = result.scalar_one_or_none()
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting record not found")
     await get_booking_with_permission(record.booking_id, current_user, db)
 
-    await db.delete(record)
+    record.deleted_at = models.now_in_utc_plus_8()
     await db.commit()
     return None
 
@@ -803,7 +894,7 @@ async def list_calendar_events(
 ):
     query = select(models.GoogleCalendarEvent).join(
         models.LessonBooking, models.GoogleCalendarEvent.booking_id == models.LessonBooking.id
-    )
+    ).where(models.GoogleCalendarEvent.deleted_at.is_(None))
     if current_user.role != models.UserRole.SUPERUSER:
         query = query.where(
             or_(
@@ -856,7 +947,10 @@ async def get_calendar_event(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(models.GoogleCalendarEvent).where(models.GoogleCalendarEvent.id == event_id)
+        select(models.GoogleCalendarEvent).where(
+            models.GoogleCalendarEvent.id == event_id,
+            models.GoogleCalendarEvent.deleted_at.is_(None),
+        )
     )
     event = result.scalar_one_or_none()
     if event is None:
@@ -877,7 +971,10 @@ async def update_calendar_event(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(models.GoogleCalendarEvent).where(models.GoogleCalendarEvent.id == event_id)
+        select(models.GoogleCalendarEvent).where(
+            models.GoogleCalendarEvent.id == event_id,
+            models.GoogleCalendarEvent.deleted_at.is_(None),
+        )
     )
     event = result.scalar_one_or_none()
     if event is None:
@@ -919,13 +1016,16 @@ async def delete_calendar_event(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(models.GoogleCalendarEvent).where(models.GoogleCalendarEvent.id == event_id)
+        select(models.GoogleCalendarEvent).where(
+            models.GoogleCalendarEvent.id == event_id,
+            models.GoogleCalendarEvent.deleted_at.is_(None),
+        )
     )
     event = result.scalar_one_or_none()
     if event is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar event not found")
     await get_booking_with_permission(event.booking_id, current_user, db)
 
-    await db.delete(event)
+    event.deleted_at = models.now_in_utc_plus_8()
     await db.commit()
     return None

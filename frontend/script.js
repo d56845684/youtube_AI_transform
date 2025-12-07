@@ -11,6 +11,7 @@ const teacherBookingStatus = document.getElementById("teacher-booking-status");
 const selectedSlotView = document.getElementById("selected-slot");
 const loadAvailabilityBtn = document.getElementById("load-availability");
 const teacherIdInput = document.getElementById("teacher-id-input");
+const teacherNameInput = document.getElementById("teacher-name-input");
 const teacherTools = document.getElementById("teacher-tools");
 const teacherToolsStatus = document.getElementById("teacher-tools-status");
 const teacherAvailabilityForm = document.getElementById("teacher-availability-form");
@@ -62,6 +63,7 @@ let authToken = null;
 let currentUser = null;
 let bookingData = [];
 let selectedSlot = null;
+let teacherDirectory = [];
 
 function setStatus(target, message, isError = false) {
   if (!target) return;
@@ -128,24 +130,44 @@ function describeAvailability(slot) {
 
 function normalizeBooking(item) {
   if (!item) return null;
-  if (item.link || item.time || item.student) {
+
+  const studentName =
+    item.student?.full_name || item.student_full_name || item.student || item.student_id || "Unknown";
+  const teacherName =
+    item.teacher?.full_name || item.teacher_full_name || item.teacher || item.teacher_id || "Unknown";
+
+  const hasNestedUsers =
+    (item.student && typeof item.student === "object") ||
+    (item.teacher && typeof item.teacher === "object") ||
+    item.availability;
+
+  if (hasNestedUsers || item.conference_link || item.reserved_at) {
+    const timeLabel =
+      (item.availability && describeAvailability(item.availability)) ||
+      (item.reserved_at && new Date(item.reserved_at).toLocaleString()) ||
+      item.time ||
+      "預約時間待確認";
+
     return {
-      student: item.student ?? item.student_id ?? "Unknown",
-      teacher: item.teacher ?? item.teacher_id ?? "Unknown",
-      platform: item.platform,
-      time: item.time ?? describeAvailability(item.availability),
-      status: item.status ?? "已建立",
-      link: item.link ?? item.conference_link ?? buildConferenceLink(item.teacher, item.student, item.platform),
+      student: studentName,
+      teacher: teacherName,
+      platform: item.platform || "Google Meet",
+      time: timeLabel,
+      status: item.status || "已建立",
+      link:
+        item.conference_link ||
+        item.link ||
+        buildConferenceLink(item.teacher_id || teacherName, item.student_id || studentName, item.platform),
     };
   }
 
   return {
-    student: item.student_id ?? "Unknown",
-    teacher: item.teacher_id ?? "Unknown",
+    student: studentName,
+    teacher: teacherName,
     platform: item.platform,
-    time: item.availability ? describeAvailability(item.availability) : new Date(item.reserved_at).toLocaleString(),
-    status: "已建立",
-    link: item.conference_link,
+    time: item.time ?? describeAvailability(item.availability),
+    status: item.status ?? "已建立",
+    link: item.link ?? item.conference_link ?? buildConferenceLink(item.teacher, item.student, item.platform),
   };
 }
 
@@ -157,28 +179,29 @@ function buildConferenceLink(teacherId, studentId, platform) {
 
 function renderTimeline(list = sampleAvailabilities, fromApi = false, target = timeline, selectable = true) {
   if (!target) return;
+  const activeList = Array.isArray(list) ? list.filter((slot) => !slot.deleted_at) : [];
   target.innerHTML =
-    list
-      .map(
-        (slot) => {
-          const dateLabel = slot.availability_date
-            ? `${formatDateValue(slot.availability_date)} (${slot.weekday || ""})`
-            : slot.weekday || "未指定日期";
-          return `
+    activeList
+      .map((slot) => {
+        const dateLabel = slot.availability_date
+          ? `${formatDateValue(slot.availability_date)} (${slot.weekday || ""})`
+          : slot.weekday || "未指定日期";
+        const teacherName = slot.teacher?.full_name || slot.teacher_full_name || slot.teacher || `Teacher #${slot.teacher_id}`;
+        const isBooked = Boolean(slot.is_booked);
+        return `
         <div class="timeline-step" data-slot-id="${slot.id || ""}">
           <div class="timeline-meta">
-            <strong>${slot.teacher || `Teacher #${slot.teacher_id}`}</strong> • ${dateLabel} • ${formatTimeRange(slot)}
+            <strong>${teacherName}</strong> • ${dateLabel} • ${formatTimeRange(slot)}
             <div class="tag-row">
               <span class="tag">${fromApi ? "Live API" : "Sample"}</span>
               ${slot.id ? `<span class="tag">ID ${slot.id}</span>` : ""}
-              <span class="tag ${slot.is_booked ? "tag-muted" : ""}">${slot.is_booked ? "已被預約" : "可預約"}</span>
+              <span class="tag ${isBooked ? "tag-muted" : ""}">${isBooked ? "已預約" : "可預約"}</span>
             </div>
           </div>
-          ${selectable ? `<button class="ghost" data-action="select-slot" ${slot.is_booked ? "disabled" : ""}>選擇</button>` : ""}
+          ${selectable ? `<button class="ghost ${isBooked ? "booked" : ""}" data-action="select-slot" ${isBooked ? "disabled" : ""}>選擇</button>` : ""}
         </div>
       `;
-        }
-      )
+      })
       .join("") || "<p>沒有可用時段</p>";
 
   if (!selectable) return;
@@ -186,8 +209,8 @@ function renderTimeline(list = sampleAvailabilities, fromApi = false, target = t
     btn.addEventListener("click", (event) => {
       const wrapper = event.target.closest(".timeline-step");
       const id = wrapper?.dataset.slotId;
-      const slot = list.find((item) => `${item.id}` === id);
-      selectSlot(slot || list[0]);
+      const slot = activeList.find((item) => `${item.id}` === id);
+      selectSlot(slot || activeList[0]);
     });
   });
 }
@@ -259,24 +282,58 @@ async function refreshBookings() {
 }
 
 async function loadAvailability(teacherId) {
-  if (!teacherId) {
+  const trimmedId = teacherId?.toString().trim();
+  if (!trimmedId) {
     renderTimeline(sampleAvailabilities, false);
-    setStatus(timelineStatus, "請先輸入 Teacher ID", true);
+    setStatus(timelineStatus, "請先輸入教師姓名或 ID", true);
     return;
   }
 
   try {
-    const availability = await apiFetch(`/teachers/${teacherId}/availability`);
+    const availability = await apiFetch(`/teachers/${trimmedId}/availability`);
     if (!availability.length) {
       renderTimeline(sampleAvailabilities, false);
       setStatus(timelineStatus, "無可用時段，顯示示範資料", true);
       return;
     }
     renderTimeline(availability, true);
-    setStatus(timelineStatus, `已載入 Teacher #${teacherId} 的 ${availability.length} 筆時段`);
+    const teacherName = availability[0]?.teacher?.full_name;
+    const label = teacherName ? `${teacherName}（ID ${trimmedId}）` : `Teacher #${trimmedId}`;
+    setStatus(timelineStatus, `已載入 ${label} 的 ${availability.length} 筆時段`);
   } catch (error) {
     renderTimeline(sampleAvailabilities, false);
     setStatus(timelineStatus, `載入失敗：${error.message}，改用示範資料`, true);
+  }
+}
+
+function renderTeacherOptions(list) {
+  if (!teacherNameInput) return;
+  const selected = teacherNameInput.value;
+  teacherNameInput.innerHTML =
+    '<option value="">選擇老師（自動帶入 ID）</option>' +
+    list.map((teacher) => `<option value="${teacher.id}">${teacher.full_name}</option>`).join("");
+  if (selected) {
+    teacherNameInput.value = selected;
+  }
+}
+
+function findTeacherIdByName(name) {
+  if (!name) return null;
+  const normalized = name.toString().trim();
+  if (/^\d+$/.test(normalized)) return normalized;
+  const lower = normalized.toLowerCase();
+  const match = teacherDirectory.find((teacher) => teacher.full_name.toLowerCase() === lower);
+  return match?.id ?? null;
+}
+
+async function refreshTeacherDirectory(query = "") {
+  try {
+    const url = query ? `/teachers?search=${encodeURIComponent(query)}` : "/teachers";
+    const teachers = await apiFetch(url);
+    teacherDirectory = teachers;
+    renderTeacherOptions(teachers);
+  } catch (error) {
+    setStatus(timelineStatus, `老師列表載入失敗：${error.message}`, true);
   }
 }
 
@@ -338,7 +395,8 @@ function selectSlot(slot) {
     const dateLabel = slot.availability_date
       ? `${formatDateValue(slot.availability_date)} (${slot.weekday || ""})`
       : slot.weekday;
-    selectedSlotView.textContent = `${dateLabel} ${formatTimeRange(slot)} ｜ ${slot.teacher || "教師"}（ID ${slot.id || "N/A"}）`;
+    const teacherLabel = slot.teacher?.full_name || slot.teacher_full_name || slot.teacher || slot.teacher_id || "教師";
+    selectedSlotView.textContent = `${dateLabel} ${formatTimeRange(slot)} ｜ ${teacherLabel}（ID ${slot.id || "N/A"}）`;
     selectedSlotView.classList.add("active");
   }
   if (slot.teacher_id) {
@@ -356,6 +414,10 @@ function syncTeacherInputs(value) {
   if (teacherIdInput && teacherIdInput.value !== value) {
     teacherIdInput.value = value;
   }
+  const matched = teacherDirectory.find((teacher) => `${teacher.id}` === `${value}`);
+  if (teacherNameInput && matched && `${teacherNameInput.value}` !== `${matched.id}`) {
+    teacherNameInput.value = `${matched.id}`;
+  }
 }
 
 document.querySelectorAll("[data-nav]").forEach((tab) => {
@@ -363,14 +425,24 @@ document.querySelectorAll("[data-nav]").forEach((tab) => {
     setActivePage(tab.dataset.nav);
     updateRoleUI();
     if (tab.dataset.nav === "booking") {
-      const teacherId = teacherIdInput?.value || "";
-      loadAvailability(teacherId.trim());
+      const teacherId = teacherIdInput?.value || findTeacherIdByName(teacherNameInput?.value) || "";
+      loadAvailability(teacherId);
       if (currentUser?.role === "teacher") {
         refreshTeacherAvailability();
       }
     }
   });
 });
+
+if (teacherNameInput) {
+  teacherNameInput.addEventListener("change", (event) => {
+    const selectedId = event.target.value;
+    if (selectedId) {
+      syncTeacherInputs(`${selectedId}`);
+      loadAvailability(selectedId);
+    }
+  });
+}
 
 if (bookingForm) {
   bookingForm.addEventListener("submit", async (event) => {
@@ -527,9 +599,9 @@ if (teacherAvailabilityForm) {
 
 if (loadAvailabilityBtn) {
   loadAvailabilityBtn.addEventListener("click", () => {
-    const teacherId = teacherIdInput?.value || "";
-    syncTeacherInputs(teacherId.trim());
-    loadAvailability(teacherId.trim());
+    const teacherId = teacherIdInput?.value || findTeacherIdByName(teacherNameInput?.value) || "";
+    syncTeacherInputs(teacherId.toString().trim());
+    loadAvailability(teacherId.toString().trim());
   });
 }
 
@@ -551,6 +623,8 @@ function initializeAvailabilityDateUI() {
 }
 
 initializeAvailabilityDateUI();
+
+refreshTeacherDirectory();
 
 renderTimeline(sampleAvailabilities, false);
 renderTimeline(sampleAvailabilities, false, teacherAvailabilityList, false);

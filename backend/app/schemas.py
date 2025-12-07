@@ -23,6 +23,17 @@ class UserOut(BaseModel):
     full_name: str
     role: UserRole
     created_at: datetime
+    updated_at: datetime
+    deleted_at: Optional[datetime]
+
+    class Config:
+        orm_mode = True
+
+
+class UserPublic(BaseModel):
+    id: int
+    full_name: str
+    email: EmailStr
 
     class Config:
         orm_mode = True
@@ -53,11 +64,16 @@ class AvailabilityUpdate(BaseModel):
 
 class AvailabilityOut(BaseModel):
     id: int
+    teacher_id: int
+    teacher: Optional[UserPublic]
     availability_date: date
     weekday: str
     start_time: time
     end_time: time
     is_booked: int
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: Optional[datetime]
 
     class Config:
         orm_mode = True
@@ -78,9 +94,14 @@ class BookingOut(BaseModel):
     availability: Optional[AvailabilityOut]
     student_id: int
     teacher_id: int
+    student: Optional[UserPublic]
+    teacher: Optional[UserPublic]
     platform: str
     conference_link: str
     reserved_at: datetime
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: Optional[datetime]
 
     class Config:
         orm_mode = True
@@ -104,6 +125,8 @@ class OrderOut(BaseModel):
     lesson_credits: int
     coupon_code: Optional[str]
     created_at: datetime
+    updated_at: datetime
+    deleted_at: Optional[datetime]
 
     class Config:
         orm_mode = True
@@ -143,6 +166,9 @@ class MeetingRecordOut(BaseModel):
     teacher_email: EmailStr
     student_email: EmailStr
     participant_emails: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: Optional[datetime]
 
     class Config:
         orm_mode = True
@@ -185,6 +211,9 @@ class CalendarEventOut(BaseModel):
     end_at: datetime
     creator_email: EmailStr
     attendee_emails: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: Optional[datetime]
 
     class Config:
         orm_mode = True

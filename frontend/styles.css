@@ -195,6 +195,11 @@ button.ghost {
     box-shadow: none;
 }
 
+button.ghost.booked {
+    text-decoration: line-through;
+    color: var(--muted);
+}
+
 .table-preview {
     width: 100%;
     border-collapse: collapse;
