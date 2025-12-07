@@ -2,6 +2,7 @@ const bookingForm = document.getElementById("booking-form");
 const linkPreview = document.getElementById("link-preview");
 const timeline = document.getElementById("timeline");
 const timelineStatus = document.getElementById("timeline-status");
+const languageToggle = document.getElementById("language-toggle");
 const bookingTable = document.querySelector("#booking-table tbody");
 const teacherBookingTable = document.querySelector("#teacher-booking-table tbody");
 const loginForm = document.getElementById("login-form");
@@ -25,6 +26,257 @@ const cancelReasonInput = document.getElementById("cancel-reason");
 const confirmCancelBtn = document.getElementById("confirm-cancel");
 const cancelDismissButtons = document.querySelectorAll("[data-dismiss=cancel]");
 
+const translations = {
+  zh: {
+    "page-title": "學生預約入口",
+    "language-toggle": "English",
+    "badges-auth": "學生登入 / 註冊",
+    "badges-jwt": "JWT 驗證",
+    "badges-booking": "立即預約",
+    "hero-title": "線上家教預約中心",
+    "hero-description":
+      "學生登入或註冊後，即可查看老師可預約時段，點擊選擇並送出課程預約，同時在同一頁面檢視自己的預約清單。",
+    "hero-note": "若未啟動後端，畫面會顯示示範資料，方便快速瀏覽流程。",
+    "steps-title": "使用步驟",
+    "steps-item1": "註冊並登入取得 Token。",
+    "steps-item2": "自動切換到「預約介面」。",
+    "steps-item3": "點選老師時段，確認後送出預約。",
+    "nav-auth": "登入 / 註冊",
+    "nav-booking": "預約介面",
+    "login-title": "登入",
+    "login-description": "輸入帳密後即可取得 JWT Token，頁面會自動切換到預約介面。",
+    "login-email": "Email",
+    "login-password": "密碼",
+    "role-student": "學生",
+    "role-teacher": "教師",
+    "login-submit": "登入並取得 Token",
+    "register-title": "註冊",
+    "register-description": "建立學生帳號，立即登入並查看老師空檔。",
+    "register-name": "姓名",
+    "register-email": "Email",
+    "register-password": "密碼",
+    "register-submit": "建立新帳號",
+    "booking-select-title": "選擇可預約時段",
+    "booking-status-placeholder": "請選擇老師或使用示範資料",
+    "booking-teacher-label": "老師",
+    "booking-teacher-placeholder": "選擇老師",
+    "booking-load-button": "載入時段",
+    "booking-confirm-title": "預約確認",
+    "booking-confirm-description": "點選左側任一時間後，會自動帶入預約表單。送出時會附帶登入 Token。",
+    "booking-empty-slot": "尚未選取時段",
+    "booking-platform-label": "平台",
+    "booking-topic-label": "主題（選填）",
+    "booking-topic-placeholder": "如：口說練習",
+    "booking-submit": "送出預約",
+    "booking-time-pending": "預約時間待確認",
+    "booking-timeline-live": "Live API",
+    "booking-timeline-sample": "示範資料",
+    "booking-timeline-bookable": "可預約",
+    "booking-timeline-booked": "已預約",
+    "booking-timeline-select": "選擇",
+    "booking-timeline-no-date": "未指定日期",
+    "booking-teacher-fallback": "老師",
+    "booking-no-teacher": "請先選擇老師",
+    "booking-no-slots": "目前無可預約時段",
+    "booking-loaded-slots": "{teacher}目前有 {count} 筆可預約時段",
+    "booking-load-error": "載入失敗：{message}",
+    "booking-sample-status": "未登入，顯示示範預約",
+    "booking-login-required": "請先登入取得 Token 後再預約",
+    "booking-select-required": "請先選擇可預約時段",
+    "booking-success": "預約成功！會議連結：{link}",
+    "booking-failure": "預約失敗：{message}",
+    "booking-cancelled": "預約已取消",
+    "booking-cancel-failure": "取消失敗：{message}",
+    "cancel-default-reason": "學生取消預約",
+    "teacher-tools-title": "教師時段管理",
+    "teacher-tools-status": "需以教師身分登入",
+    "teacher-tools-description": "教師登入後可新增可預約時段，並查看自己目前的課程預約／會議資訊。",
+    "teacher-date": "日期",
+    "teacher-weekday": "系統判定星期",
+    "teacher-start": "開始時間",
+    "teacher-end": "結束時間",
+    "teacher-add": "新增可預約時段",
+    "teacher-availability-title": "我的可預約時段",
+    "teacher-availability-label": "尚未載入",
+    "teacher-bookings-title": "教師課程 / 會議",
+    "teacher-booking-status": "需以教師身分登入",
+    "teacher-mode": "教師模式：{email}",
+    "teacher-not-teacher": "登入角色非教師",
+    "teacher-need-login": "需教師登入",
+    "teacher-availability-count": "共 {count} 筆可預約時段",
+    "teacher-availability-error": "教師時段載入失敗：{message}，改用示範資料",
+    "bookings-title": "我的預約",
+    "bookings-status": "尚未登入，顯示示範資料",
+    "bookings-description": "登入後會帶入 JWT Token 呼叫 <code>/bookings</code>，只顯示當前學生的預約紀錄。",
+    "table-student": "學生",
+    "table-teacher": "老師",
+    "table-time": "時間",
+    "table-platform": "平台",
+    "table-status": "狀態",
+    "table-reason": "原因",
+    "table-link": "連結",
+    "table-recording": "錄影",
+    "table-action": "操作",
+    "action-cancel-booking": "取消預約",
+    "action-cancelled": "已取消",
+    "action-drive-link": "Drive 連結",
+    "action-fetch-recording": "取得錄影",
+    "action-meeting-id": "Meeting ID",
+    "cancel-eyebrow": "預約取消",
+    "cancel-title": "確認取消這筆預約嗎？",
+    "cancel-description": "取消後將會移除行事曆邀請並釋放老師時段。",
+    "cancel-reason-label": "取消原因（選填）",
+    "cancel-reason-placeholder": "例如：臨時有事，想重新預約",
+    "cancel-dismiss": "不用，返回",
+    "cancel-confirm": "確認取消",
+    "status-success": "成功",
+    "status-cancelled": "取消",
+    "status-pending": "待確認",
+    "teacher-booking-loaded": "教師已載入 {count} 筆課程/會議",
+    "booking-loaded": "已載入 {count} 筆預約",
+    "booking-load-failure": "讀取預約失敗：{message}，顯示示範資料",
+    "teacher-booking-failure": "教師列表載入失敗：{message}，顯示示範資料",
+    "teacher-add-invalid-date": "請選擇有效的日期與時間",
+    "teacher-add-different-day": "開始與結束時間需在同一天",
+    "teacher-add-invalid-range": "請輸入有效的開始與結束時間",
+    "teacher-add-created": "已新增 {date} ({weekday}) {range}",
+    "teacher-add-unauthorized": "僅教師可以新增可預約時段",
+    "teacher-add-error": "新增失敗：{message}",
+    "login-success": "登入成功，已取得存取權杖",
+    "login-current-user": "使用者：{email}（{role}）",
+    "login-failure": "登入失敗：{message}",
+    "register-success": "註冊成功：{email}（{role}），請返回登入",
+    "register-failure": "註冊失敗：{message}",
+    "recording-success": "錄影檔案已上傳到雲端：{detail}",
+    "recording-failure": "取得錄影失敗：{message}",
+    "prompt-share-email": "輸入要分享錄影檔案的 Email",
+  },
+  en: {
+    "page-title": "Student Booking Portal",
+    "language-toggle": "中文",
+    "badges-auth": "Student Login / Register",
+    "badges-jwt": "JWT Auth",
+    "badges-booking": "Book Now",
+    "hero-title": "Online Tutor Booking Center",
+    "hero-description":
+      "Log in or register to browse teachers' available slots, pick a time, submit a booking, and view your reservations on one page.",
+    "hero-note": "If the backend is not running, sample data will appear so you can preview the flow quickly.",
+    "steps-title": "How it works",
+    "steps-item1": "Register and log in to get a token.",
+    "steps-item2": "Switch to the booking view automatically.",
+    "steps-item3": "Click a teacher's slot, confirm, and submit.",
+    "nav-auth": "Login / Register",
+    "nav-booking": "Booking",
+    "login-title": "Login",
+    "login-description": "Enter your credentials to get a JWT token. The page will switch to booking automatically.",
+    "login-email": "Email",
+    "login-password": "Password",
+    "role-student": "Student",
+    "role-teacher": "Teacher",
+    "login-submit": "Login and get token",
+    "register-title": "Register",
+    "register-description": "Create a student account to log in right away and check open slots.",
+    "register-name": "Full name",
+    "register-email": "Email",
+    "register-password": "Password",
+    "register-submit": "Create account",
+    "booking-select-title": "Pick a bookable slot",
+    "booking-status-placeholder": "Select a teacher or use sample data",
+    "booking-teacher-label": "Teacher",
+    "booking-teacher-placeholder": "Choose a teacher",
+    "booking-load-button": "Load availability",
+    "booking-confirm-title": "Booking confirmation",
+    "booking-confirm-description": "After clicking a time on the left, the booking form fills in automatically. Your token is sent on submit.",
+    "booking-empty-slot": "No slot selected",
+    "booking-platform-label": "Platform",
+    "booking-topic-label": "Topic (optional)",
+    "booking-topic-placeholder": "e.g. Speaking practice",
+    "booking-submit": "Submit booking",
+    "booking-timeline-live": "Live API",
+    "booking-timeline-sample": "Sample",
+    "booking-timeline-bookable": "Bookable",
+    "booking-timeline-booked": "Booked",
+    "booking-timeline-select": "Select",
+    "booking-timeline-no-date": "No date specified",
+    "booking-teacher-fallback": "Teacher",
+    "booking-no-teacher": "Pick a teacher first",
+    "booking-no-slots": "No bookable slots",
+    "booking-loaded-slots": "{teacher} has {count} bookable slots",
+    "booking-load-error": "Load failed: {message}",
+    "booking-sample-status": "Showing sample bookings while logged out",
+    "booking-login-required": "Please log in to book a slot",
+    "booking-select-required": "Select a bookable slot first",
+    "booking-success": "Booked! Meeting link: {link}",
+    "booking-failure": "Booking failed: {message}",
+    "booking-cancelled": "Booking cancelled",
+    "booking-cancel-failure": "Cancel failed: {message}",
+    "cancel-default-reason": "Student cancelled booking",
+    "teacher-tools-title": "Teacher availability tools",
+    "teacher-tools-status": "Teacher login required",
+    "teacher-tools-description": "Teachers can add bookable slots and review their lessons or meetings after logging in.",
+    "teacher-date": "Date",
+    "teacher-weekday": "Detected weekday",
+    "teacher-start": "Start time",
+    "teacher-end": "End time",
+    "teacher-add": "Add availability",
+    "teacher-availability-title": "My availability",
+    "teacher-availability-label": "Not loaded",
+    "teacher-bookings-title": "Teacher lessons / meetings",
+    "teacher-booking-status": "Teacher login required",
+    "teacher-mode": "Teacher mode: {email}",
+    "teacher-not-teacher": "Logged in as non-teacher",
+    "teacher-need-login": "Teacher login required",
+    "teacher-availability-count": "{count} available slots",
+    "teacher-availability-error": "Availability failed: {message}. Using sample data",
+    "bookings-title": "My bookings",
+    "bookings-status": "Showing samples while logged out",
+    "bookings-description": "After login, your JWT token calls <code>/bookings</code> to show only your records.",
+    "table-student": "Student",
+    "table-teacher": "Teacher",
+    "table-time": "Time",
+    "table-platform": "Platform",
+    "table-status": "Status",
+    "table-reason": "Reason",
+    "table-link": "Link",
+    "table-recording": "Recording",
+    "table-action": "Actions",
+    "action-cancel-booking": "Cancel booking",
+    "action-cancelled": "Cancelled",
+    "action-drive-link": "Drive link",
+    "action-fetch-recording": "Get recording",
+    "action-meeting-id": "Meeting ID",
+    "cancel-eyebrow": "Cancel booking",
+    "cancel-title": "Cancel this booking?",
+    "cancel-description": "This removes the calendar invite and frees the teacher's time.",
+    "cancel-reason-label": "Reason (optional)",
+    "cancel-reason-placeholder": "Example: Something came up, I need to reschedule",
+    "cancel-dismiss": "No, go back",
+    "cancel-confirm": "Confirm cancel",
+    "status-success": "Succeeded",
+    "status-cancelled": "Cancelled",
+    "status-pending": "Pending",
+    "teacher-booking-loaded": "Teacher loaded {count} bookings/meetings",
+    "booking-loaded": "Loaded {count} bookings",
+    "booking-load-failure": "Bookings failed: {message}. Showing samples",
+    "teacher-booking-failure": "Teacher bookings failed: {message}. Showing samples",
+    "teacher-add-invalid-date": "Choose a valid date and time",
+    "teacher-add-different-day": "Start and end must be on the same day",
+    "teacher-add-invalid-range": "Enter a valid start and end time",
+    "teacher-add-created": "Added {date} ({weekday}) {range}",
+    "teacher-add-unauthorized": "Only teachers can add availability",
+    "teacher-add-error": "Create failed: {message}",
+    "login-success": "Logged in. Token ready",
+    "login-current-user": "User: {email} ({role})",
+    "login-failure": "Login failed: {message}",
+    "register-success": "Registered: {email} ({role}). Please log in",
+    "register-failure": "Register failed: {message}",
+    "recording-success": "Recording uploaded: {detail}",
+    "recording-failure": "Get recording failed: {message}",
+    "prompt-share-email": "Enter an email to share the recording",
+  },
+};
+
+let currentLocale = "zh";
 const sampleAvailabilities = [
   { id: 1, teacher: "Chloe Chen", weekday: "Mon", window: "10:00 - 12:00", is_booked: 0 },
   { id: 2, teacher: "Daniel Wu", weekday: "Wed", window: "14:00 - 16:00", is_booked: 0 },
@@ -73,6 +325,45 @@ let bookingData = [];
 let selectedSlot = null;
 let teacherDirectory = [];
 let pendingCancelBookingId = null;
+let currentTimelineData = sampleAvailabilities;
+let currentTimelineFromApi = false;
+let currentTeacherTimelineData = sampleAvailabilities;
+let currentTeacherTimelineFromApi = false;
+
+function t(key, vars = {}) {
+  const template = translations[currentLocale]?.[key] ?? translations.zh?.[key] ?? vars?.fallback ?? key;
+  return template.replace(/\{(\w+)\}/g, (match, name) => (vars[name] !== undefined ? vars[name] : match));
+}
+
+function applyTranslations() {
+  document.documentElement.lang = currentLocale === "en" ? "en" : "zh-Hant";
+  document.title = t("page-title");
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const key = el.dataset.i18n;
+    const value = t(key);
+    if (el.dataset.i18nHtml === "true") {
+      el.innerHTML = value;
+    } else {
+      el.textContent = value;
+    }
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    const key = el.dataset.i18nPlaceholder;
+    el.placeholder = t(key);
+  });
+  if (languageToggle) {
+    languageToggle.textContent = currentLocale === "en" ? "中文" : "English";
+  }
+  renderTimeline(currentTimelineData, currentTimelineFromApi, timeline, true);
+  renderTimeline(currentTeacherTimelineData, currentTeacherTimelineFromApi, teacherAvailabilityList, false);
+  renderAllBookings();
+  if (selectedSlot) {
+    selectSlot(selectedSlot);
+  } else if (selectedSlotView) {
+    selectedSlotView.textContent = t("booking-empty-slot");
+  }
+  syncTranslatedStatuses();
+}
 
 function setStatus(target, message, isError = false) {
   if (!target) return;
@@ -135,10 +426,10 @@ function formatTimeRange(slot) {
 }
 
 function describeAvailability(slot) {
-  if (!slot) return "預約時間待確認";
+  if (!slot) return t("booking-time-pending");
   const dateLabel = slot.availability_date
     ? `${formatDateValue(slot.availability_date)} (${slot.weekday || ""})`
-    : slot.weekday || "未指定日期";
+    : slot.weekday || t("booking-timeline-no-date");
   return `${dateLabel} ${formatTimeRange(slot)}`.trim();
 }
 
@@ -153,7 +444,7 @@ function resolveDriveLink(source) {
   );
 }
 
-function openCancelModal(bookingId, defaultReason = "學生取消預約") {
+function openCancelModal(bookingId, defaultReason = t("cancel-default-reason")) {
   if (!cancelModal) return;
   pendingCancelBookingId = bookingId;
   cancelModal.classList.add("show");
@@ -180,17 +471,17 @@ if (confirmCancelBtn) {
       return;
     }
 
-    const reason = cancelReasonInput?.value?.trim() || "學生取消預約";
+    const reason = cancelReasonInput?.value?.trim() || t("cancel-default-reason");
     try {
       await apiFetch(`/bookings/${pendingCancelBookingId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status_desc: reason }),
       });
-      setStatus(bookingStatus, "預約已取消");
+      setStatus(bookingStatus, t("booking-cancelled"));
       await refreshBookings();
     } catch (error) {
-      setStatus(bookingStatus, `取消失敗：${error.message}`, true);
+      setStatus(bookingStatus, t("booking-cancel-failure", { message: error.message }), true);
     }
     closeCancelModal();
   });
@@ -227,7 +518,7 @@ function normalizeBooking(item) {
       (item.availability && describeAvailability(item.availability)) ||
       (item.reserved_at && new Date(item.reserved_at).toLocaleString()) ||
       item.time ||
-      "預約時間待確認";
+      t("booking-time-pending");
 
     return {
       id: item.id,
@@ -279,23 +570,39 @@ function renderTimeline(list = sampleAvailabilities, fromApi = false, target = t
   if (!target) return;
   const activeList = Array.isArray(list) ? list.filter((slot) => !slot.deleted_at) : [];
   const visibleList = selectable ? activeList.filter((slot) => !slot.is_booked) : activeList;
+
+  if (target === timeline) {
+    currentTimelineData = list;
+    currentTimelineFromApi = fromApi;
+  }
+  if (target === teacherAvailabilityList) {
+    currentTeacherTimelineData = list;
+    currentTeacherTimelineFromApi = fromApi;
+  }
+
   target.innerHTML = visibleList
     .map((slot) => {
       const dateLabel = slot.availability_date
         ? `${formatDateValue(slot.availability_date)} (${slot.weekday || ""})`
-        : slot.weekday || "未指定日期";
-    const teacherName = slot.teacher?.full_name || slot.teacher_full_name || slot.teacher || "老師";
+        : slot.weekday || t("booking-timeline-no-date");
+      const teacherName = slot.teacher?.full_name || slot.teacher_full_name || slot.teacher || t("booking-teacher-fallback");
       const isBooked = Boolean(slot.is_booked);
       return `
         <div class="timeline-step" data-slot-id="${slot.id || ""}">
           <div class="timeline-meta">
             <strong>${teacherName}</strong> • ${dateLabel} • ${formatTimeRange(slot)}
             <div class="tag-row">
-              <span class="tag">${fromApi ? "Live API" : "Sample"}</span>
-              <span class="tag ${isBooked ? "tag-muted" : ""}">${isBooked ? "已預約" : "可預約"}</span>
+              <span class="tag">${fromApi ? t("booking-timeline-live") : t("booking-timeline-sample")}</span>
+              <span class="tag ${isBooked ? "tag-muted" : ""}">${isBooked ? t("booking-timeline-booked") : t("booking-timeline-bookable")}</span>
             </div>
           </div>
-          ${selectable ? `<button class="ghost ${isBooked ? "booked" : ""}" data-action="select-slot" ${isBooked ? "disabled" : ""}>選擇</button>` : ""}
+          ${
+            selectable
+              ? `<button class="ghost ${isBooked ? "booked" : ""}" data-action="select-slot" ${isBooked ? "disabled" : ""}>${t(
+                  "booking-timeline-select",
+                )}</button>`
+              : ""
+          }
         </div>
       `;
     })
@@ -312,35 +619,101 @@ function renderTimeline(list = sampleAvailabilities, fromApi = false, target = t
   });
 }
 
+function localizeStatusLabel(status) {
+  if (!status) return "";
+  const normalized = status.toString().toLowerCase();
+  if (normalized.includes("取消") || normalized.includes("cancel")) return t("status-cancelled", { fallback: status });
+  if (normalized.includes("成功") || normalized.includes("succeed") || normalized.includes("confirm"))
+    return t("status-success", { fallback: status });
+  if (normalized.includes("待") || normalized.includes("pending") || normalized.includes("await"))
+    return t("status-pending", { fallback: status });
+  return status;
+}
+
+function updateTimelineStatusMessage() {
+  if (!timelineStatus) return;
+  const activeList = Array.isArray(currentTimelineData) ? currentTimelineData.filter((slot) => !slot.deleted_at) : [];
+  const bookableSlots = activeList.filter((slot) => !slot.is_booked);
+  if (!bookableSlots.length) {
+    const messageKey = currentTimelineData?.length ? "booking-no-slots" : "booking-status-placeholder";
+    setStatus(timelineStatus, t(messageKey), messageKey !== "booking-status-placeholder");
+    return;
+  }
+  const teacherName = bookableSlots[0]?.teacher?.full_name;
+  const label = teacherName ? `${teacherName}` : t("booking-teacher-fallback");
+  setStatus(timelineStatus, t("booking-loaded-slots", { teacher: label, count: bookableSlots.length }));
+}
+
+function syncTranslatedStatuses() {
+  updateTimelineStatusMessage();
+  if (bookingStatus) {
+    if (!authToken) {
+      setStatus(bookingStatus, t("booking-sample-status"));
+    } else {
+      const studentViewLength =
+        currentUser?.role === "student" ? filterStudentBookings(bookingData).length : bookingData.length;
+      setStatus(bookingStatus, t("booking-loaded", { count: studentViewLength }));
+    }
+  }
+  if (teacherBookingStatus) {
+    if (!teacherBookingStatus.classList.contains("error")) {
+      if (currentUser?.role === "teacher") {
+        setStatus(teacherBookingStatus, t("teacher-booking-loaded", { count: bookingData.length }));
+      } else {
+        setStatus(teacherBookingStatus, t("teacher-tools-status"), true);
+      }
+    }
+  }
+  if (teacherAvailabilityLabel) {
+    if (!teacherAvailabilityLabel.classList.contains("error")) {
+      if (!authToken || currentUser?.role !== "teacher") {
+        setStatus(teacherAvailabilityLabel, currentUser ? t("teacher-not-teacher") : t("teacher-need-login"), true);
+      } else {
+        setStatus(teacherAvailabilityLabel, t("teacher-availability-count", { count: currentTeacherTimelineData?.length || 0 }));
+      }
+    }
+  }
+  if (teacherToolsStatus) {
+    setStatus(
+      teacherToolsStatus,
+      currentUser?.role === "teacher" ? t("teacher-mode", { email: currentUser?.email }) : t("teacher-tools-status"),
+      currentUser?.role !== "teacher" && !!currentUser,
+    );
+  }
+}
+
 function renderBookings(targetTable, data) {
   if (!targetTable) return;
   const normalized = data.map(normalizeBooking).filter(Boolean);
   const isStudentTable = targetTable === bookingTable;
   targetTable.innerHTML = normalized
     .map((item) => {
+      const isCancelled = (item.status || "").toString().toLowerCase().includes("取消") ||
+        (item.status || "").toString().toLowerCase().includes("cancel");
       const canCancel =
         isStudentTable &&
         currentUser?.role === "student" &&
         `${item.student_id}` === `${currentUser?.id}` &&
-        item.status !== "取消";
-      const statusBadge = `<span class="tag ${item.status === "取消" ? "tag-muted" : ""}">${item.status || "成功"}</span>`;
+        !isCancelled;
+      const statusLabel = localizeStatusLabel(item.status || "成功");
+      const statusBadge = `<span class="tag ${isCancelled ? "tag-muted" : ""}">${statusLabel}</span>`;
       const statusDesc = item.status_desc || "";
-      const defaultReason = statusDesc || "學生取消預約";
+      const defaultReason = statusDesc || t("cancel-default-reason");
       const actionCell = isStudentTable
         ? item.drive_link
-          ? `<a class="muted" href="${escapeAttribute(item.drive_link)}" target="_blank" rel="noopener">Drive 連結</a>`
-          : `<button class="ghost" data-action="cancel-booking" data-booking-id="${item.id}" data-default-reason="${escapeAttribute(defaultReason)}" ${canCancel ? "" : "disabled"}>${item.status === "取消" ? "已取消" : "取消預約"}</button>`
+          ? `<a class="muted" href="${escapeAttribute(item.drive_link)}" target="_blank" rel="noopener">${t("action-drive-link")}</a>`
+          : `<button class="ghost" data-action="cancel-booking" data-booking-id="${item.id}" data-default-reason="${escapeAttribute(defaultReason)}" ${canCancel ? "" : "disabled"}>${isCancelled ? t("action-cancelled") : t("action-cancel-booking")}</button>`
         : "";
       const recordingCell = !isStudentTable
         ? `<div class="stacked">
             ${
               item.platform === "Zoom"
                 ? item.drive_link
-                  ? `<a class="muted" href="${escapeAttribute(item.drive_link)}" target="_blank" rel="noopener">Drive 連結</a>`
-                  : `<button class="ghost" data-action="fetch-recording" data-booking-id="${item.id}" data-meeting-id="${escapeAttribute(item.meeting_id || "")}" data-student-email="${escapeAttribute(item.student_email || "")}">取得錄影</button>`
+                  ? `<a class="muted" href="${escapeAttribute(item.drive_link)}" target="_blank" rel="noopener">${t("action-drive-link")}</a>`
+                  : `<button class="ghost" data-action="fetch-recording" data-booking-id="${item.id}" data-meeting-id="${escapeAttribute(item.meeting_id || "")}" data-student-email="${escapeAttribute(item.student_email || "")}">${t("action-fetch-recording")}</button>`
                 : "-"
             }
-            ${item.meeting_id ? `<span class="muted">Meeting ID: ${escapeAttribute(item.meeting_id)}</span>` : ""}
+            ${item.meeting_id ? `<span class="muted">${t("action-meeting-id")}: ${escapeAttribute(item.meeting_id)}</span>` : ""}
           </div>`
         : "";
       return `
@@ -364,7 +737,7 @@ function renderBookings(targetTable, data) {
       btn.addEventListener("click", async (event) => {
         const bookingId = event.currentTarget.dataset.bookingId;
         if (!bookingId) return;
-        const defaultReason = event.currentTarget.dataset.defaultReason || "學生取消預約";
+        const defaultReason = event.currentTarget.dataset.defaultReason || t("cancel-default-reason");
         openCancelModal(bookingId, defaultReason);
       });
     });
@@ -375,7 +748,7 @@ function renderBookings(targetTable, data) {
         const meetingId = event.currentTarget.dataset.meetingId;
         const defaultEmail =
           event.currentTarget.dataset.studentEmail || currentUser?.email || "";
-        const shareEmail = prompt("輸入要分享錄影檔案的 Email", defaultEmail);
+        const shareEmail = prompt(t("prompt-share-email"), defaultEmail);
         if (!bookingId || !shareEmail) return;
 
         try {
@@ -389,7 +762,7 @@ function renderBookings(targetTable, data) {
           const driveLink = resolveDriveLink(record);
           setStatus(
             teacherBookingStatus,
-            `錄影檔案已上傳到雲端：${record.drive_share_link || record.drive_file_id || "完成"}`
+            t("recording-success", { detail: record.drive_share_link || record.drive_file_id || "完成" }),
           );
           if (driveLink) {
             const idx = bookingData.findIndex((item) => `${item?.id}` === `${bookingId}`);
@@ -406,7 +779,7 @@ function renderBookings(targetTable, data) {
             }
           }
         } catch (error) {
-          setStatus(teacherBookingStatus, `取得錄影失敗：${error.message}`, true);
+          setStatus(teacherBookingStatus, t("recording-failure", { message: error.message }), true);
         }
       });
     });
@@ -436,8 +809,8 @@ async function refreshBookings() {
   if (!authToken) {
     bookingData = sampleBookings;
     renderAllBookings();
-    setStatus(bookingStatus, "未登入，顯示示範預約");
-    setStatus(teacherBookingStatus, "需以教師身分登入", true);
+    setStatus(bookingStatus, t("booking-sample-status"));
+    setStatus(teacherBookingStatus, t("teacher-tools-status"), true);
     return;
   }
 
@@ -447,16 +820,16 @@ async function refreshBookings() {
     renderAllBookings();
     const studentViewLength =
       currentUser?.role === "student" ? filterStudentBookings(bookings).length : bookings.length;
-    setStatus(bookingStatus, `已載入 ${studentViewLength} 筆預約`);
+    setStatus(bookingStatus, t("booking-loaded", { count: studentViewLength }));
     if (teacherBookingStatus) {
-      setStatus(teacherBookingStatus, `教師已載入 ${bookings.length} 筆課程/會議`);
+      setStatus(teacherBookingStatus, t("teacher-booking-loaded", { count: bookings.length }));
     }
   } catch (error) {
-    setStatus(bookingStatus, `讀取預約失敗：${error.message}，顯示示範資料`, true);
+    setStatus(bookingStatus, t("booking-load-failure", { message: error.message }), true);
     bookingData = sampleBookings;
     renderAllBookings();
     if (teacherBookingStatus) {
-      setStatus(teacherBookingStatus, `教師列表載入失敗：${error.message}，顯示示範資料`, true);
+      setStatus(teacherBookingStatus, t("teacher-booking-failure", { message: error.message }), true);
     }
   }
 }
@@ -465,7 +838,7 @@ async function loadAvailability(teacherId) {
   const trimmedId = teacherId?.toString().trim();
   if (!trimmedId) {
     renderTimeline([], false);
-    setStatus(timelineStatus, "請先選擇老師", true);
+    setStatus(timelineStatus, t("booking-no-teacher"), true);
     return;
   }
 
@@ -478,16 +851,16 @@ async function loadAvailability(teacherId) {
 
     if (!bookableSlots.length) {
       renderTimeline([], true);
-      setStatus(timelineStatus, "目前無可預約時段", true);
+      setStatus(timelineStatus, t("booking-no-slots"), true);
       return;
     }
     renderTimeline(bookableSlots, true);
     const teacherName = bookableSlots[0]?.teacher?.full_name;
-    const label = teacherName ? `${teacherName}` : "所選老師";
-    setStatus(timelineStatus, `${label}目前有 ${bookableSlots.length} 筆可預約時段`);
+    const label = teacherName ? `${teacherName}` : t("booking-teacher-fallback");
+    setStatus(timelineStatus, t("booking-loaded-slots", { teacher: label, count: bookableSlots.length }));
   } catch (error) {
     renderTimeline([], false);
-    setStatus(timelineStatus, `載入失敗：${error.message}`, true);
+    setStatus(timelineStatus, t("booking-load-error", { message: error.message }), true);
   }
 }
 
@@ -495,7 +868,7 @@ function renderTeacherOptions(list) {
   if (!teacherNameInput) return;
   const selected = teacherNameInput.value;
   teacherNameInput.innerHTML =
-    '<option value="">選擇老師</option>' +
+    `<option value="">${t("booking-teacher-placeholder")}</option>` +
     list.map((teacher) => `<option value="${teacher.id}">${teacher.full_name}</option>`).join("");
   if (selected) {
     teacherNameInput.value = selected;
@@ -509,7 +882,7 @@ async function refreshTeacherDirectory(query = "") {
     teacherDirectory = teachers;
     renderTeacherOptions(teachers);
   } catch (error) {
-    setStatus(timelineStatus, `老師列表載入失敗：${error.message}`, true);
+    setStatus(timelineStatus, t("booking-load-error", { message: error.message }), true);
   }
 }
 
@@ -517,17 +890,25 @@ async function refreshTeacherAvailability() {
   if (!teacherAvailabilityList) return;
   if (!authToken || !currentUser || currentUser.role !== "teacher") {
     renderTimeline(sampleAvailabilities, false, teacherAvailabilityList, false);
-    setStatus(teacherAvailabilityLabel, currentUser ? "登入角色非教師" : "需教師登入", true);
+    setStatus(
+      teacherAvailabilityLabel,
+      currentUser ? t("teacher-not-teacher") : t("teacher-need-login"),
+      true,
+    );
     return;
   }
 
   try {
     const availability = await apiFetch(`/teachers/${currentUser.id}/availability`);
     renderTimeline(availability, true, teacherAvailabilityList, false);
-    setStatus(teacherAvailabilityLabel, `共 ${availability.length} 筆可預約時段`);
+    setStatus(teacherAvailabilityLabel, t("teacher-availability-count", { count: availability.length }));
   } catch (error) {
     renderTimeline(sampleAvailabilities, false, teacherAvailabilityList, false);
-    setStatus(teacherAvailabilityLabel, `教師時段載入失敗：${error.message}，改用示範資料`, true);
+    setStatus(
+      teacherAvailabilityLabel,
+      t("teacher-availability-error", { message: error.message }),
+      true,
+    );
   }
 }
 
@@ -550,12 +931,16 @@ function updateRoleUI() {
     teacherTools.classList.toggle("hidden", !isTeacher);
   }
   if (teacherToolsStatus) {
-    setStatus(teacherToolsStatus, isTeacher ? `教師模式：${currentUser?.email}` : "需以教師身分登入", !isTeacher && !!currentUser);
+    setStatus(
+      teacherToolsStatus,
+      isTeacher ? t("teacher-mode", { email: currentUser?.email }) : t("teacher-tools-status"),
+      !isTeacher && !!currentUser,
+    );
   }
   if (!isTeacher) {
     renderTimeline(sampleAvailabilities, false, teacherAvailabilityList, false);
-    setStatus(teacherAvailabilityLabel, currentUser ? "登入角色非教師" : "需教師登入", true);
-    setStatus(teacherBookingStatus, currentUser ? "登入角色非教師" : "需以教師身分登入", true);
+    setStatus(teacherAvailabilityLabel, currentUser ? t("teacher-not-teacher") : t("teacher-need-login"), true);
+    setStatus(teacherBookingStatus, currentUser ? t("teacher-not-teacher") : t("teacher-tools-status"), true);
     renderBookings(teacherBookingTable, bookingData);
     return;
   }
@@ -571,7 +956,7 @@ function selectSlot(slot) {
     const dateLabel = slot.availability_date
       ? `${formatDateValue(slot.availability_date)} (${slot.weekday || ""})`
       : slot.weekday;
-    const teacherLabel = slot.teacher?.full_name || slot.teacher_full_name || slot.teacher || "教師";
+    const teacherLabel = slot.teacher?.full_name || slot.teacher_full_name || slot.teacher || t("booking-teacher-fallback");
     selectedSlotView.textContent = `${teacherLabel} ｜ ${dateLabel} ${formatTimeRange(slot)}`;
     selectedSlotView.classList.add("active");
   }
@@ -628,11 +1013,11 @@ if (bookingForm) {
     const platform = formData.get("platform");
 
     if (!authToken) {
-      setStatus(linkPreview, "請先登入取得 Token 後再預約", true);
+      setStatus(linkPreview, t("booking-login-required"), true);
       return;
     }
     if (!availabilityId) {
-      setStatus(linkPreview, "請先選擇可預約時段", true);
+      setStatus(linkPreview, t("booking-select-required"), true);
       return;
     }
 
@@ -645,10 +1030,10 @@ if (bookingForm) {
       const normalized = normalizeBooking(booking);
       bookingData.unshift(normalized);
       renderAllBookings();
-      setStatus(linkPreview, `預約成功！會議連結：${normalized.link}`);
+      setStatus(linkPreview, t("booking-success", { link: normalized.link }));
       linkPreview.classList.add("status-pill");
     } catch (error) {
-      setStatus(linkPreview, `預約失敗：${error.message}`, true);
+      setStatus(linkPreview, t("booking-failure", { message: error.message }), true);
     }
   });
 }
@@ -670,10 +1055,13 @@ if (loginForm) {
         body: payload,
       });
       authToken = token.access_token;
-      setStatus(document.getElementById("login-status"), "登入成功，已取得存取權杖");
+      setStatus(document.getElementById("login-status"), t("login-success"));
 
       currentUser = await apiFetch("/users/me");
-      setStatus(document.getElementById("login-status"), `使用者：${currentUser.email}（${currentUser.role}）`);
+      setStatus(
+        document.getElementById("login-status"),
+        t("login-current-user", { email: currentUser.email, role: currentUser.role }),
+      );
       updateRoleUI();
       syncTeacherInputs(currentUser?.id ? `${currentUser.id}` : teacherNameInput?.value || "");
       setActivePage("booking");
@@ -682,7 +1070,7 @@ if (loginForm) {
       await refreshBookings();
       await refreshTeacherAvailability();
     } catch (error) {
-      setStatus(document.getElementById("login-status"), `登入失敗：${error.message}`, true);
+      setStatus(document.getElementById("login-status"), t("login-failure", { message: error.message }), true);
     }
   });
 }
@@ -706,10 +1094,10 @@ if (registerForm) {
       });
       setStatus(
         document.getElementById("register-status"),
-        `註冊成功：${result.email}（${result.role}），請返回登入`,
+        t("register-success", { email: result.email, role: result.role }),
       );
     } catch (error) {
-      setStatus(document.getElementById("register-status"), `註冊失敗：${error.message}`, true);
+      setStatus(document.getElementById("register-status"), t("register-failure", { message: error.message }), true);
     }
   });
 }
@@ -718,7 +1106,7 @@ if (teacherAvailabilityForm) {
   teacherAvailabilityForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!currentUser || currentUser.role !== "teacher") {
-      setStatus(teacherAvailabilityStatus, "僅教師可以新增可預約時段", true);
+      setStatus(teacherAvailabilityStatus, t("teacher-add-unauthorized"), true);
       return;
     }
     const formData = new FormData(teacherAvailabilityForm);
@@ -729,15 +1117,15 @@ if (teacherAvailabilityForm) {
     const endDate = endValue && availabilityDate ? new Date(`${availabilityDate}T${endValue}`) : null;
 
     if (!availabilityDate || !startDate || !endDate || Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-      setStatus(teacherAvailabilityStatus, "請選擇有效的日期與時間", true);
+      setStatus(teacherAvailabilityStatus, t("teacher-add-invalid-date"), true);
       return;
     }
     if (startDate.toDateString() !== endDate.toDateString()) {
-      setStatus(teacherAvailabilityStatus, "開始與結束時間需在同一天", true);
+      setStatus(teacherAvailabilityStatus, t("teacher-add-different-day"), true);
       return;
     }
     if (startDate >= endDate) {
-      setStatus(teacherAvailabilityStatus, "請輸入有效的開始與結束時間", true);
+      setStatus(teacherAvailabilityStatus, t("teacher-add-invalid-range"), true);
       return;
     }
 
@@ -755,7 +1143,11 @@ if (teacherAvailabilityForm) {
       });
       setStatus(
         teacherAvailabilityStatus,
-        `已新增 ${formatDateValue(created.availability_date)} (${created.weekday}) ${formatTimeRange(created)}`,
+        t("teacher-add-created", {
+          date: formatDateValue(created.availability_date),
+          weekday: created.weekday,
+          range: formatTimeRange(created),
+        }),
       );
       teacherAvailabilityForm.reset();
       if (teacherDateInput) {
@@ -768,7 +1160,7 @@ if (teacherAvailabilityForm) {
         loadAvailability(teacherNameInput.value.trim());
       }
     } catch (error) {
-      setStatus(teacherAvailabilityStatus, `新增失敗：${error.message}`, true);
+      setStatus(teacherAvailabilityStatus, t("teacher-add-error", { message: error.message }), true);
     }
   });
 }
@@ -778,6 +1170,13 @@ if (loadAvailabilityBtn) {
     const teacherId = teacherNameInput?.value || "";
     syncTeacherInputs(teacherId.toString().trim());
     loadAvailability(teacherId.toString().trim());
+  });
+}
+
+if (languageToggle) {
+  languageToggle.addEventListener("click", () => {
+    currentLocale = currentLocale === "zh" ? "en" : "zh";
+    applyTranslations();
   });
 }
 
@@ -808,3 +1207,4 @@ bookingData = sampleBookings.map((item) => normalizeBooking(item));
 renderAllBookings();
 setActivePage("auth");
 updateRoleUI();
+applyTranslations();
