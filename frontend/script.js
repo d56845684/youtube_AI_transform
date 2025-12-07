@@ -143,6 +143,17 @@ function describeAvailability(slot) {
   return `${dateLabel} ${formatTimeRange(slot)}`.trim();
 }
 
+function resolveDriveLink(source) {
+  if (!source) return "";
+  return (
+    source.drive_share_link ||
+    source.driveShareLink ||
+    source.drive_link ||
+    source.driveLink ||
+    ""
+  );
+}
+
 function openCancelModal(bookingId, defaultReason = "學生取消預約") {
   if (!cancelModal) return;
   pendingCancelBookingId = bookingId;
@@ -204,8 +215,7 @@ function normalizeBooking(item) {
 
   const zoomRecording = item.zoom_recording || item.zoomRecording;
   const meetingId = zoomRecording?.meeting_id || item.meeting_id || item.meetingId || "";
-  const driveLink =
-    zoomRecording?.drive_share_link || zoomRecording?.driveShareLink || item.drive_link || "";
+  const driveLink = resolveDriveLink(zoomRecording) || item.drive_link || "";
 
   const hasNestedUsers =
     (item.student && typeof item.student === "object") ||
@@ -322,15 +332,12 @@ function renderBookings(targetTable, data) {
         ? `<div class="stacked">
             ${
               item.platform === "Zoom"
-                ? `<button class="ghost" data-action="fetch-recording" data-booking-id="${item.id}" data-meeting-id="${escapeAttribute(item.meeting_id || "")}">取得錄影</button>`
+                ? item.drive_link
+                  ? `<a class="muted" href="${escapeAttribute(item.drive_link)}" target="_blank" rel="noopener">Drive 連結</a>`
+                  : `<button class="ghost" data-action="fetch-recording" data-booking-id="${item.id}" data-meeting-id="${escapeAttribute(item.meeting_id || "")}">取得錄影</button>`
                 : "-"
             }
             ${item.meeting_id ? `<span class="muted">Meeting ID: ${escapeAttribute(item.meeting_id)}</span>` : ""}
-            ${
-              item.drive_link
-                ? `<a class="muted" href="${escapeAttribute(item.drive_link)}" target="_blank" rel="noopener">Drive 連結</a>`
-                : ""
-            }
           </div>`
         : "";
       return `
@@ -375,10 +382,25 @@ function renderBookings(targetTable, data) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
+          const driveLink = resolveDriveLink(record);
           setStatus(
             teacherBookingStatus,
             `錄影檔案已上傳到雲端：${record.drive_share_link || record.drive_file_id || "完成"}`
           );
+          if (driveLink) {
+            const idx = bookingData.findIndex((item) => `${item?.id}` === `${bookingId}`);
+            if (idx >= 0) {
+              const existing = bookingData[idx] || {};
+              const updatedRecording = {
+                ...(existing.zoom_recording || {}),
+                ...record,
+                drive_link: driveLink,
+                drive_share_link: driveLink,
+              };
+              bookingData[idx] = { ...existing, drive_link: driveLink, zoom_recording: updatedRecording };
+              renderAllBookings();
+            }
+          }
         } catch (error) {
           setStatus(teacherBookingStatus, `取得錄影失敗：${error.message}`, true);
         }
