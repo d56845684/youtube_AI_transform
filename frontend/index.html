@@ -76,13 +76,11 @@
                         <h2>選擇可預約時段</h2>
                         <span class="status-pill" id="timeline-status">請選擇老師或使用示範資料</span>
                     </div>
-                    <p>系統會依據教師 ID 呼叫 <code>/teachers/{id}/availability</code>，成功登入後會帶入 Token。</p>
                     <div class="field-group inline-inputs">
-                        <label for="teacher-name-input">老師姓名</label>
+                        <label for="teacher-name-input">老師</label>
                         <select id="teacher-name-input" name="teacherName">
-                            <option value="">選擇老師（自動帶入代碼）</option>
+                            <option value="">選擇老師</option>
                         </select>
-                        <input type="number" id="teacher-id-input" name="teacherId" placeholder="或直接輸入老師代碼">
                         <button type="button" id="load-availability">載入時段</button>
                     </div>
                     <div class="timeline" id="timeline"></div>
