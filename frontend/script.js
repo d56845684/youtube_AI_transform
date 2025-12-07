@@ -279,13 +279,14 @@ function buildConferenceLink(teacherId, studentId, platform) {
 function renderTimeline(list = sampleAvailabilities, fromApi = false, target = timeline, selectable = true) {
   if (!target) return;
   const activeList = Array.isArray(list) ? list.filter((slot) => !slot.deleted_at) : [];
+  const visibleList = selectable ? activeList.filter((slot) => !slot.is_booked) : activeList;
   target.innerHTML =
-    activeList
+    visibleList
       .map((slot) => {
         const dateLabel = slot.availability_date
           ? `${formatDateValue(slot.availability_date)} (${slot.weekday || ""})`
           : slot.weekday || "未指定日期";
-        const teacherName = slot.teacher?.full_name || slot.teacher_full_name || slot.teacher || `Teacher #${slot.teacher_id}`;
+        const teacherName = slot.teacher?.full_name || slot.teacher_full_name || slot.teacher || "老師";
         const isBooked = Boolean(slot.is_booked);
         return `
         <div class="timeline-step" data-slot-id="${slot.id || ""}">
@@ -293,7 +294,6 @@ function renderTimeline(list = sampleAvailabilities, fromApi = false, target = t
             <strong>${teacherName}</strong> • ${dateLabel} • ${formatTimeRange(slot)}
             <div class="tag-row">
               <span class="tag">${fromApi ? "Live API" : "Sample"}</span>
-              ${slot.id ? `<span class="tag">ID ${slot.id}</span>` : ""}
               <span class="tag ${isBooked ? "tag-muted" : ""}">${isBooked ? "已預約" : "可預約"}</span>
             </div>
           </div>
@@ -308,8 +308,8 @@ function renderTimeline(list = sampleAvailabilities, fromApi = false, target = t
     btn.addEventListener("click", (event) => {
       const wrapper = event.target.closest(".timeline-step");
       const id = wrapper?.dataset.slotId;
-      const slot = activeList.find((item) => `${item.id}` === id);
-      selectSlot(slot || activeList[0]);
+      const slot = visibleList.find((item) => `${item.id}` === id);
+      selectSlot(slot || visibleList[0]);
     });
   });
 }
@@ -467,7 +467,7 @@ async function loadAvailability(teacherId) {
   const trimmedId = teacherId?.toString().trim();
   if (!trimmedId) {
     renderTimeline(sampleAvailabilities, false);
-    setStatus(timelineStatus, "請先輸入教師姓名或 ID", true);
+    setStatus(timelineStatus, "請先選擇老師", true);
     return;
   }
 
@@ -480,8 +480,8 @@ async function loadAvailability(teacherId) {
     }
     renderTimeline(availability, true);
     const teacherName = availability[0]?.teacher?.full_name;
-    const label = teacherName ? `${teacherName}（ID ${trimmedId}）` : `Teacher #${trimmedId}`;
-    setStatus(timelineStatus, `已載入 ${label} 的 ${availability.length} 筆時段`);
+    const label = teacherName ? `${teacherName}` : "所選老師";
+    setStatus(timelineStatus, `${label}目前有 ${availability.length} 筆可預約時段`);
   } catch (error) {
     renderTimeline(sampleAvailabilities, false);
     setStatus(timelineStatus, `載入失敗：${error.message}，改用示範資料`, true);
@@ -492,7 +492,7 @@ function renderTeacherOptions(list) {
   if (!teacherNameInput) return;
   const selected = teacherNameInput.value;
   teacherNameInput.innerHTML =
-    '<option value="">選擇老師（自動帶入 ID）</option>' +
+    '<option value="">選擇老師（自動帶入代碼）</option>' +
     list.map((teacher) => `<option value="${teacher.id}">${teacher.full_name}</option>`).join("");
   if (selected) {
     teacherNameInput.value = selected;
@@ -578,7 +578,7 @@ function selectSlot(slot) {
       ? `${formatDateValue(slot.availability_date)} (${slot.weekday || ""})`
       : slot.weekday;
     const teacherLabel = slot.teacher?.full_name || slot.teacher_full_name || slot.teacher || slot.teacher_id || "教師";
-    selectedSlotView.textContent = `${dateLabel} ${formatTimeRange(slot)} ｜ ${teacherLabel}（ID ${slot.id || "N/A"}）`;
+    selectedSlotView.textContent = `${teacherLabel} ｜ ${dateLabel} ${formatTimeRange(slot)}`;
     selectedSlotView.classList.add("active");
   }
   if (slot.teacher_id) {
@@ -638,7 +638,7 @@ if (bookingForm) {
       return;
     }
     if (!availabilityId) {
-      setStatus(linkPreview, "請輸入有效的 Availability ID", true);
+      setStatus(linkPreview, "請先選擇可預約時段", true);
       return;
     }
 

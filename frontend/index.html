@@ -74,15 +74,15 @@
                 <article class="card student-only">
                     <div class="section-header">
                         <h2>選擇可預約時段</h2>
-                        <span class="status-pill" id="timeline-status">請輸入教師 ID 或使用示範資料</span>
+                        <span class="status-pill" id="timeline-status">請選擇老師或使用示範資料</span>
                     </div>
                     <p>系統會依據教師 ID 呼叫 <code>/teachers/{id}/availability</code>，成功登入後會帶入 Token。</p>
                     <div class="field-group inline-inputs">
                         <label for="teacher-name-input">老師姓名</label>
                         <select id="teacher-name-input" name="teacherName">
-                            <option value="">選擇老師（自動帶入 ID）</option>
+                            <option value="">選擇老師（自動帶入代碼）</option>
                         </select>
-                        <input type="number" id="teacher-id-input" name="teacherId" placeholder="或直接輸入 ID，如 18">
+                        <input type="number" id="teacher-id-input" name="teacherId" placeholder="或直接輸入老師代碼">
                         <button type="button" id="load-availability">載入時段</button>
                     </div>
                     <div class="timeline" id="timeline"></div>
@@ -92,8 +92,7 @@
                     <p>點選左側任一時間後，會自動帶入預約表單。送出時會附帶登入 Token。</p>
                     <div class="selected-slot" id="selected-slot">尚未選取時段</div>
                     <form id="booking-form" class="field-group">
-                        <label>Availability ID</label>
-                        <input type="number" name="availabilityId" placeholder="點擊左側時段會自動填入" required readonly>
+                        <input type="hidden" name="availabilityId" required>
                         <label>平台</label>
                         <select name="platform" id="platform">
                             <option>Google Meet</option>
