@@ -236,7 +236,7 @@ function normalizeBooking(item) {
       teacher_id: item.teacher_id,
       student: studentName,
       teacher: teacherName,
-      platform: item.platform || "Google Meet",
+      platform: item.platform || "Zoom",
       time: timeLabel,
       status: item.status || "成功",
       status_desc: item.status_desc || "",
@@ -257,7 +257,7 @@ function normalizeBooking(item) {
     teacher_id: item.teacher_id,
     student: studentName,
     teacher: teacherName,
-    platform: item.platform,
+    platform: item.platform || "Zoom",
     time: item.time ?? describeAvailability(item.availability),
     status: item.status ?? "成功",
     status_desc: item.status_desc || "",
@@ -280,15 +280,14 @@ function renderTimeline(list = sampleAvailabilities, fromApi = false, target = t
   if (!target) return;
   const activeList = Array.isArray(list) ? list.filter((slot) => !slot.deleted_at) : [];
   const visibleList = selectable ? activeList.filter((slot) => !slot.is_booked) : activeList;
-  target.innerHTML =
-    visibleList
-      .map((slot) => {
-        const dateLabel = slot.availability_date
-          ? `${formatDateValue(slot.availability_date)} (${slot.weekday || ""})`
-          : slot.weekday || "未指定日期";
-        const teacherName = slot.teacher?.full_name || slot.teacher_full_name || slot.teacher || "老師";
-        const isBooked = Boolean(slot.is_booked);
-        return `
+  target.innerHTML = visibleList
+    .map((slot) => {
+      const dateLabel = slot.availability_date
+        ? `${formatDateValue(slot.availability_date)} (${slot.weekday || ""})`
+        : slot.weekday || "未指定日期";
+      const teacherName = slot.teacher?.full_name || slot.teacher_full_name || slot.teacher || "老師";
+      const isBooked = Boolean(slot.is_booked);
+      return `
         <div class="timeline-step" data-slot-id="${slot.id || ""}">
           <div class="timeline-meta">
             <strong>${teacherName}</strong> • ${dateLabel} • ${formatTimeRange(slot)}
@@ -300,8 +299,8 @@ function renderTimeline(list = sampleAvailabilities, fromApi = false, target = t
           ${selectable ? `<button class="ghost ${isBooked ? "booked" : ""}" data-action="select-slot" ${isBooked ? "disabled" : ""}>選擇</button>` : ""}
         </div>
       `;
-      })
-      .join("") || "<p>沒有可用時段</p>";
+    })
+    .join("");
 
   if (!selectable) return;
   target.querySelectorAll("[data-action=select-slot]").forEach((btn) => {
@@ -466,7 +465,7 @@ async function refreshBookings() {
 async function loadAvailability(teacherId) {
   const trimmedId = teacherId?.toString().trim();
   if (!trimmedId) {
-    renderTimeline(sampleAvailabilities, false);
+    renderTimeline([], false);
     setStatus(timelineStatus, "請先選擇老師", true);
     return;
   }
@@ -474,8 +473,8 @@ async function loadAvailability(teacherId) {
   try {
     const availability = await apiFetch(`/teachers/${trimmedId}/availability`);
     if (!availability.length) {
-      renderTimeline(sampleAvailabilities, false);
-      setStatus(timelineStatus, "無可用時段，顯示示範資料", true);
+      renderTimeline([], true);
+      setStatus(timelineStatus, "目前無可預約時段", true);
       return;
     }
     renderTimeline(availability, true);
@@ -483,8 +482,8 @@ async function loadAvailability(teacherId) {
     const label = teacherName ? `${teacherName}` : "所選老師";
     setStatus(timelineStatus, `${label}目前有 ${availability.length} 筆可預約時段`);
   } catch (error) {
-    renderTimeline(sampleAvailabilities, false);
-    setStatus(timelineStatus, `載入失敗：${error.message}，改用示範資料`, true);
+    renderTimeline([], false);
+    setStatus(timelineStatus, `載入失敗：${error.message}`, true);
   }
 }
 
