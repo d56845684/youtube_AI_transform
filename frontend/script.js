@@ -19,6 +19,7 @@ const teacherWeekdayInput = document.getElementById("teacher-weekday");
 const teacherAvailabilityList = document.getElementById("teacher-availability-list");
 const teacherAvailabilityLabel = document.getElementById("teacher-availability-label");
 const teacherAvailabilityStatus = document.getElementById("teacher-availability-status");
+const studentOnlySections = document.querySelectorAll(".student-only");
 
 const sampleAvailabilities = [
   { id: 1, teacher: "Chloe Chen", weekday: "Mon", window: "10:00 - 12:00", is_booked: 0 },
@@ -309,6 +310,9 @@ function setActivePage(target) {
 
 function updateRoleUI() {
   const isTeacher = currentUser?.role === "teacher";
+  if (studentOnlySections.length) {
+    studentOnlySections.forEach((section) => section.classList.toggle("hidden", isTeacher));
+  }
   if (teacherTools) {
     teacherTools.classList.toggle("hidden", !isTeacher);
   }
