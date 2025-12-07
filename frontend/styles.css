@@ -104,6 +104,15 @@ header {
     align-items: flex-start;
 }
 
+.three-column {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    align-items: center;
+}
+
+.hidden {
+    display: none !important;
+}
+
 .card {
     background: var(--card);
     border: 1px solid var(--border);
@@ -271,6 +280,10 @@ button.ghost {
     justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
+}
+
+.section-header h4 {
+    margin: 0;
 }
 
 .page {

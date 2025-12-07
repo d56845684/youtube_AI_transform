@@ -110,6 +110,55 @@
                 </article>
             </div>
 
+            <section class="card teacher-only hidden" id="teacher-tools">
+                <div class="section-header">
+                    <h3>教師時段管理</h3>
+                    <span class="status-pill" id="teacher-tools-status">需以教師身分登入</span>
+                </div>
+                <p>教師登入後可新增可預約時段，並查看自己目前的課程預約／會議資訊。</p>
+                <form id="teacher-availability-form" class="field-group three-column">
+                    <label for="teacher-weekday">星期</label>
+                    <select id="teacher-weekday" name="weekday" required>
+                        <option value="Mon">Mon</option>
+                        <option value="Tue">Tue</option>
+                        <option value="Wed">Wed</option>
+                        <option value="Thu">Thu</option>
+                        <option value="Fri">Fri</option>
+                        <option value="Sat">Sat</option>
+                        <option value="Sun">Sun</option>
+                    </select>
+                    <label for="teacher-start">開始時間</label>
+                    <input id="teacher-start" type="datetime-local" name="startTime" required>
+                    <label for="teacher-end">結束時間</label>
+                    <input id="teacher-end" type="datetime-local" name="endTime" required>
+                    <button type="submit">新增可預約時段</button>
+                    <div class="status-line" id="teacher-availability-status" aria-live="polite"></div>
+                </form>
+
+                <div class="section-header">
+                    <h4>我的可預約時段</h4>
+                    <span class="status-pill" id="teacher-availability-label">尚未載入</span>
+                </div>
+                <div class="timeline" id="teacher-availability-list"></div>
+
+                <div class="section-header">
+                    <h4>教師課程 / 會議</h4>
+                    <span class="status-pill" id="teacher-booking-status">需以教師身分登入</span>
+                </div>
+                <table class="table-preview" id="teacher-booking-table">
+                    <thead>
+                        <tr>
+                            <th>學生</th>
+                            <th>老師</th>
+                            <th>時間</th>
+                            <th>平台</th>
+                            <th>連結</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </section>
+
             <section class="card">
                 <div class="section-header">
                     <h3>我的預約</h3>
