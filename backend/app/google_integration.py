@@ -1,4 +1,5 @@
 import asyncio
+import io
 import logging
 import os
 import uuid
@@ -9,13 +10,17 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaIoBaseUpload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import models
 
 logger = logging.getLogger(__name__)
 
-SCOPES = ["https://www.googleapis.com/auth/calendar"]
+SCOPES = [
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/drive.file",
+]
 
 
 class GoogleIntegrationError(Exception):
@@ -170,3 +175,47 @@ async def delete_calendar_event(calendar_event: models.GoogleCalendarEvent) -> N
         await asyncio.to_thread(_delete_event)
     except HttpError as exc:
         raise GoogleIntegrationError("Failed to delete calendar event") from exc
+
+
+async def upload_file_to_drive(
+    *,
+    file_name: str,
+    mime_type: str,
+    content: bytes,
+    share_email: str,
+    folder_id: str | None = None,
+) -> dict:
+    """Upload a file to Google Drive and grant read access to the given email."""
+
+    credentials = await asyncio.to_thread(_load_credentials)
+
+    def _upload() -> dict:
+        service = build("drive", "v3", credentials=credentials)
+        media = MediaIoBaseUpload(io.BytesIO(content), mimetype=mime_type, resumable=False)
+        metadata: dict[str, object] = {"name": file_name}
+        if folder_id:
+            metadata["parents"] = [folder_id]
+
+        file_resource = (
+            service.files()
+            .create(body=metadata, media_body=media, fields="id, webViewLink, webContentLink")
+            .execute()
+        )
+
+        service.permissions().create(
+            fileId=file_resource["id"],
+            body={
+                "type": "user",
+                "role": "reader",
+                "emailAddress": share_email,
+            },
+            fields="id",
+            sendNotificationEmail=False,
+        ).execute()
+
+        return file_resource
+
+    try:
+        return await asyncio.to_thread(_upload)
+    except HttpError as exc:
+        raise GoogleIntegrationError("Failed to upload file to Google Drive") from exc

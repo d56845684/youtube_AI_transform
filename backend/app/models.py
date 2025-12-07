@@ -105,6 +105,9 @@ class LessonBooking(TimestampMixin, Base):
     availability = relationship("TeacherAvailability", back_populates="booking")
     student = relationship("User", foreign_keys=[student_id], back_populates="bookings")
     teacher = relationship("User", foreign_keys=[teacher_id], back_populates="lessons")
+    zoom_recording = relationship(
+        "ZoomRecording", back_populates="booking", cascade="all, delete", uselist=False
+    )
 
 
 class MeetingRecord(TimestampMixin, Base):
@@ -145,3 +148,22 @@ class GoogleCalendarEvent(TimestampMixin, Base):
     attendee_emails = Column(String, nullable=True)
 
     booking = relationship("LessonBooking")
+
+
+class ZoomRecording(TimestampMixin, Base):
+    __tablename__ = "zoom_recordings"
+
+    id = Column(Integer, primary_key=True)
+    booking_id = Column(
+        Integer, ForeignKey("lesson_bookings.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    meeting_id = Column(String, nullable=False, index=True)
+    file_name = Column(String, nullable=True)
+    recording_download_url = Column(String, nullable=True)
+    drive_file_id = Column(String, nullable=True)
+    drive_share_link = Column(String, nullable=True)
+    shared_with_email = Column(String, nullable=True)
+    start_url = Column(String, nullable=True)
+    join_url = Column(String, nullable=True)
+
+    booking = relationship("LessonBooking", back_populates="zoom_recording")

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from datetime import date, datetime, time
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -123,6 +124,7 @@ async def get_booking_with_permission(
             ),
             selectinload(models.LessonBooking.student),
             selectinload(models.LessonBooking.teacher),
+            selectinload(models.LessonBooking.zoom_recording),
         )
         .where(
             models.LessonBooking.id == booking_id,
@@ -559,6 +561,13 @@ async def book_availability(
 
             booking.conference_link = zoom_meeting["join_url"]
             booking.platform = "Zoom"
+            zoom_record = models.ZoomRecording(
+                booking_id=booking.id,
+                meeting_id=str(zoom_meeting["id"]),
+                start_url=zoom_meeting.get("start_url"),
+                join_url=zoom_meeting.get("join_url"),
+            )
+            db.add(zoom_record)
             zoom_description_lines = [
                 f"Zoom Meeting ID: {zoom_meeting['id']}",
                 f"Host Start URL: {zoom_meeting['start_url']}",
@@ -605,7 +614,9 @@ async def book_availability(
         await db.refresh(google_event)
 
     await db.refresh(booking)
-    await db.refresh(booking, attribute_names=["availability", "student", "teacher"])
+    await db.refresh(
+        booking, attribute_names=["availability", "student", "teacher", "zoom_recording"]
+    )
     return booking
 
 
@@ -780,6 +791,7 @@ async def list_bookings(
             ),
             selectinload(models.LessonBooking.student),
             selectinload(models.LessonBooking.teacher),
+            selectinload(models.LessonBooking.zoom_recording),
         )
         .where(models.LessonBooking.deleted_at.is_(None))
     )
@@ -794,6 +806,80 @@ async def list_bookings(
             base_query.where(models.LessonBooking.student_id == current_user.id)
         )
     return result.scalars().all()
+
+
+@app.post(
+    "/bookings/{booking_id}/zoom-recording",
+    response_model=schemas.ZoomRecordingOut,
+    tags=["Zoom"],
+)
+async def upload_zoom_recording(
+    booking_id: int,
+    payload: schemas.ZoomRecordingRequest,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    booking = await get_booking_with_permission(booking_id, current_user, db)
+    if booking.platform != "Zoom":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Recording upload is only available for Zoom bookings",
+        )
+
+    result = await db.execute(
+        select(models.ZoomRecording).where(models.ZoomRecording.booking_id == booking.id)
+    )
+    zoom_record = result.scalar_one_or_none()
+
+    meeting_id = payload.meeting_id or (zoom_record.meeting_id if zoom_record else None)
+    if not meeting_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Meeting ID is required")
+
+    if zoom_record is None:
+        zoom_record = models.ZoomRecording(
+            booking_id=booking.id,
+            meeting_id=meeting_id,
+            join_url=booking.conference_link,
+        )
+        db.add(zoom_record)
+    else:
+        zoom_record.meeting_id = meeting_id
+
+    try:
+        recording = await asyncio.to_thread(
+            zoom_integration.download_meeting_recording, meeting_id
+        )
+    except zoom_integration.ZoomIntegrationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to fetch Zoom recording",
+        ) from exc
+
+    try:
+        upload_result = await google_integration.upload_file_to_drive(
+            file_name=recording["file_name"],
+            mime_type=recording["mime_type"],
+            content=recording["content"],
+            share_email=payload.share_email,
+            folder_id=os.getenv("GOOGLE_DRIVE_RECORDING_FOLDER_ID"),
+        )
+    except google_integration.GoogleIntegrationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to upload recording to Google Drive",
+        ) from exc
+
+    zoom_record.recording_download_url = recording.get("download_url")
+    zoom_record.file_name = recording.get("file_name")
+    zoom_record.drive_file_id = upload_result.get("id")
+    zoom_record.drive_share_link = upload_result.get("webViewLink") or upload_result.get(
+        "webContentLink"
+    )
+    zoom_record.shared_with_email = payload.share_email
+
+    await db.commit()
+    await db.refresh(zoom_record)
+    return zoom_record
 
 
 @app.get(

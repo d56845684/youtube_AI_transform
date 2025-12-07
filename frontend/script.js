@@ -48,6 +48,7 @@ const sampleBookings = [
     teacher: "Daniel Wu",
     platform: "Zoom",
     time: "Wed 15:00",
+    meeting_id: "987654321",
     status: "成功",
   },
   {
@@ -201,6 +202,11 @@ function normalizeBooking(item) {
   const teacherName =
     item.teacher?.full_name || item.teacher_full_name || item.teacher || item.teacher_id || "Unknown";
 
+  const zoomRecording = item.zoom_recording || item.zoomRecording;
+  const meetingId = zoomRecording?.meeting_id || item.meeting_id || item.meetingId || "";
+  const driveLink =
+    zoomRecording?.drive_share_link || zoomRecording?.driveShareLink || item.drive_link || "";
+
   const hasNestedUsers =
     (item.student && typeof item.student === "object") ||
     (item.teacher && typeof item.teacher === "object") ||
@@ -227,6 +233,9 @@ function normalizeBooking(item) {
         item.conference_link ||
         item.link ||
         buildConferenceLink(item.teacher_id || teacherName, item.student_id || studentName, item.platform),
+      meeting_id: meetingId,
+      drive_link: driveLink,
+      zoom_recording: zoomRecording,
     };
   }
 
@@ -241,6 +250,9 @@ function normalizeBooking(item) {
     status: item.status ?? "成功",
     status_desc: item.status_desc || "",
     link: item.link ?? item.conference_link ?? buildConferenceLink(item.teacher, item.student, item.platform),
+    meeting_id: meetingId,
+    drive_link: driveLink,
+    zoom_recording: zoomRecording,
   };
 }
 
@@ -304,11 +316,22 @@ function renderBookings(targetTable, data) {
       const statusDesc = item.status_desc || "";
       const defaultReason = statusDesc || "學生取消預約";
       const actionCell = isStudentTable
-        ? `<button class="ghost" data-action="cancel-booking" data-booking-id="${item.id}" data-default-reason="${escapeAttribute(defaultReason)}" ${
-            canCancel ? "" : "disabled"
-          }>${
-            item.status === "取消" ? "已取消" : "取消預約"
-          }</button>`
+        ? `<button class="ghost" data-action="cancel-booking" data-booking-id="${item.id}" data-default-reason="${escapeAttribute(defaultReason)}" ${canCancel ? "" : "disabled"}>${item.status === "取消" ? "已取消" : "取消預約"}</button>`
+        : "";
+      const recordingCell = !isStudentTable
+        ? `<div class="stacked">
+            ${
+              item.platform === "Zoom"
+                ? `<button class="ghost" data-action="fetch-recording" data-booking-id="${item.id}" data-meeting-id="${escapeAttribute(item.meeting_id || "")}">取得錄影</button>`
+                : "-"
+            }
+            ${item.meeting_id ? `<span class="muted">Meeting ID: ${escapeAttribute(item.meeting_id)}</span>` : ""}
+            ${
+              item.drive_link
+                ? `<a class="muted" href="${escapeAttribute(item.drive_link)}" target="_blank" rel="noopener">Drive 連結</a>`
+                : ""
+            }
+          </div>`
         : "";
       return `
         <tr>
@@ -319,6 +342,7 @@ function renderBookings(targetTable, data) {
           <td>${statusBadge}</td>
           <td>${statusDesc || "-"}</td>
           <td><a href="${item.link}" target="_blank" rel="noopener">${item.link}</a></td>
+          ${recordingCell ? `<td>${recordingCell}</td>` : ""}
           ${isStudentTable ? `<td>${actionCell}</td>` : ""}
         </tr>
       `;
@@ -332,6 +356,32 @@ function renderBookings(targetTable, data) {
         if (!bookingId) return;
         const defaultReason = event.currentTarget.dataset.defaultReason || "學生取消預約";
         openCancelModal(bookingId, defaultReason);
+      });
+    });
+  } else {
+    targetTable.querySelectorAll("[data-action=fetch-recording]").forEach((btn) => {
+      btn.addEventListener("click", async (event) => {
+        const bookingId = event.currentTarget.dataset.bookingId;
+        const meetingId = event.currentTarget.dataset.meetingId;
+        const defaultEmail = currentUser?.email || "";
+        const shareEmail = prompt("輸入要分享錄影檔案的 Email", defaultEmail);
+        if (!bookingId || !shareEmail) return;
+
+        try {
+          const payload = { share_email: shareEmail };
+          if (meetingId) payload.meeting_id = meetingId;
+          const record = await apiFetch(`/bookings/${bookingId}/zoom-recording`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          setStatus(
+            teacherBookingStatus,
+            `錄影檔案已上傳到雲端：${record.drive_share_link || record.drive_file_id || "完成"}`
+          );
+        } catch (error) {
+          setStatus(teacherBookingStatus, `取得錄影失敗：${error.message}`, true);
+        }
       });
     });
   }
