@@ -210,6 +210,7 @@ function normalizeBooking(item) {
 
   const studentName =
     item.student?.full_name || item.student_full_name || item.student || item.student_id || "Unknown";
+  const studentEmail = item.student?.email || item.student_email || item.studentEmail || "";
   const teacherName =
     item.teacher?.full_name || item.teacher_full_name || item.teacher || item.teacher_id || "Unknown";
 
@@ -246,6 +247,7 @@ function normalizeBooking(item) {
       meeting_id: meetingId,
       drive_link: driveLink,
       zoom_recording: zoomRecording,
+      student_email: studentEmail,
     };
   }
 
@@ -263,6 +265,7 @@ function normalizeBooking(item) {
     meeting_id: meetingId,
     drive_link: driveLink,
     zoom_recording: zoomRecording,
+    student_email: studentEmail,
   };
 }
 
@@ -336,7 +339,7 @@ function renderBookings(targetTable, data) {
               item.platform === "Zoom"
                 ? item.drive_link
                   ? `<a class="muted" href="${escapeAttribute(item.drive_link)}" target="_blank" rel="noopener">Drive 連結</a>`
-                  : `<button class="ghost" data-action="fetch-recording" data-booking-id="${item.id}" data-meeting-id="${escapeAttribute(item.meeting_id || "")}">取得錄影</button>`
+                  : `<button class="ghost" data-action="fetch-recording" data-booking-id="${item.id}" data-meeting-id="${escapeAttribute(item.meeting_id || "")}" data-student-email="${escapeAttribute(item.student_email || "")}">取得錄影</button>`
                 : "-"
             }
             ${item.meeting_id ? `<span class="muted">Meeting ID: ${escapeAttribute(item.meeting_id)}</span>` : ""}
@@ -372,7 +375,8 @@ function renderBookings(targetTable, data) {
       btn.addEventListener("click", async (event) => {
         const bookingId = event.currentTarget.dataset.bookingId;
         const meetingId = event.currentTarget.dataset.meetingId;
-        const defaultEmail = currentUser?.email || "";
+        const defaultEmail =
+          event.currentTarget.dataset.studentEmail || currentUser?.email || "";
         const shareEmail = prompt("輸入要分享錄影檔案的 Email", defaultEmail);
         if (!bookingId || !shareEmail) return;
 
