@@ -1,6 +1,5 @@
 import asyncio
 import io
-import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -14,8 +13,9 @@ from googleapiclient.http import MediaIoBaseUpload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import models
+from .logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 SCOPES = [
     "https://www.googleapis.com/auth/calendar",
@@ -45,14 +45,25 @@ def _load_credentials() -> Credentials:
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Failed to refresh Google credentials: %s", exc)
+                raise GoogleIntegrationError("Failed to refresh Google credentials") from exc
         else:
             if not os.path.exists(credentials_path):
+                logger.error(
+                    "Google OAuth client file not found at '%s'", credentials_path
+                )
                 raise GoogleIntegrationError(
                     f"Google OAuth client file not found at '{credentials_path}'"
                 )
             flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
-            creds = flow.run_local_server(port=0)
+            try:
+                creds = flow.run_local_server(port=0)
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Failed to complete Google OAuth flow: %s", exc)
+                raise GoogleIntegrationError("Failed to load Google OAuth credentials") from exc
 
         with open(token_path, "w", encoding="utf-8") as token:
             token.write(creds.to_json())
@@ -130,6 +141,7 @@ async def create_calendar_event_for_booking(
     try:
         event = await asyncio.to_thread(_insert_event)
     except HttpError as exc:
+        logger.error("Failed to create calendar event for booking %s: %s", booking.id, exc)
         raise GoogleIntegrationError("Failed to create calendar event") from exc
 
     meet_link = _extract_meet_link(event)
@@ -174,6 +186,12 @@ async def delete_calendar_event(calendar_event: models.GoogleCalendarEvent) -> N
     try:
         await asyncio.to_thread(_delete_event)
     except HttpError as exc:
+        logger.error(
+            "Failed to delete calendar event %s from calendar %s: %s",
+            calendar_event.calendar_event_id,
+            calendar_id,
+            exc,
+        )
         raise GoogleIntegrationError("Failed to delete calendar event") from exc
 
 
@@ -216,6 +234,10 @@ async def upload_file_to_drive(
         return file_resource
 
     try:
-        return await asyncio.to_thread(_upload)
+        uploaded = await asyncio.to_thread(_upload)
     except HttpError as exc:
+        logger.error("Failed to upload %s to Google Drive: %s", file_name, exc)
         raise GoogleIntegrationError("Failed to upload file to Google Drive") from exc
+
+    logger.info("Uploaded file %s to Drive with id %s", file_name, uploaded.get("id"))
+    return uploaded

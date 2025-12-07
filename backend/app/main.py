@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import os
 from datetime import date, datetime, time
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -11,10 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import auth, google_integration, models, schemas, zoom_integration
 from .database import Base, engine, get_db
+from .logger import get_logger
 
 app = FastAPI(title="Language Tutor Marketplace")
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def normalize_to_utc_plus_8(moment: datetime) -> datetime:
@@ -165,6 +165,7 @@ async def get_order_with_permission(
 async def register(user_in: schemas.UserCreate, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(models.User).where(models.User.email == user_in.email))
     if existing.scalar_one_or_none():
+        logger.warning("Registration blocked for duplicate email: %s", user_in.email)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
     hashed_password = auth.get_password_hash(user_in.password)
@@ -177,6 +178,8 @@ async def register(user_in: schemas.UserCreate, db: AsyncSession = Depends(get_d
     db.add(user)
     await db.commit()
     await db.refresh(user)
+
+    logger.info("Registered new user %s with role %s", user.email, user.role.value)
     return user
 
 
@@ -187,6 +190,7 @@ async def login(
     result = await db.execute(select(models.User).where(models.User.email == form_data.username))
     user = result.scalar_one_or_none()
     if not user or not auth.verify_password(form_data.password, user.hashed_password):
+        logger.warning("Failed login attempt for %s", form_data.username)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     access_token = auth.create_access_token({"sub": str(user.id), "role": user.role.value})
@@ -491,6 +495,9 @@ async def book_availability(
         )
         teacher = teacher_result.scalar_one_or_none()
         if teacher is None:
+            logger.error(
+                "Teacher %s unavailable for availability %s", availability.teacher_id, availability.id
+            )
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Teacher unavailable")
 
         platform_domain_map = {
@@ -529,6 +536,9 @@ async def book_availability(
                 )
             except google_integration.GoogleIntegrationError as exc:
                 await db.rollback()
+                logger.error(
+                    "Failed to generate Google Meet link for booking %s: %s", booking.id, exc
+                )
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail="Failed to generate Google Meet link",
@@ -536,6 +546,7 @@ async def book_availability(
 
             if not google_event.meet_link:
                 await db.rollback()
+                logger.error("Google Meet link missing for booking %s", booking.id)
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail="Google Meet link was not generated",
@@ -554,6 +565,7 @@ async def book_availability(
                 )
             except zoom_integration.ZoomIntegrationError as exc:
                 await db.rollback()
+                logger.error("Failed to create Zoom meeting for booking %s: %s", booking.id, exc)
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail="Failed to generate Zoom meeting",
@@ -587,6 +599,11 @@ async def book_availability(
                 )
             except google_integration.GoogleIntegrationError as exc:
                 await db.rollback()
+                logger.error(
+                    "Failed to create Google Calendar event for Zoom booking %s: %s",
+                    booking.id,
+                    exc,
+                )
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail="Failed to create Google Calendar event",
@@ -850,6 +867,7 @@ async def upload_zoom_recording(
             zoom_integration.download_meeting_recording, meeting_id
         )
     except zoom_integration.ZoomIntegrationError as exc:
+        logger.error("Failed to fetch Zoom recording for meeting %s: %s", meeting_id, exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Failed to fetch Zoom recording",
@@ -864,10 +882,32 @@ async def upload_zoom_recording(
             folder_id=os.getenv("GOOGLE_DRIVE_RECORDING_FOLDER_ID"),
         )
     except google_integration.GoogleIntegrationError as exc:
+        logger.error(
+            "Failed to upload Zoom recording %s to Drive for booking %s: %s",
+            meeting_id,
+            booking.id,
+            exc,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Failed to upload recording to Google Drive",
         ) from exc
+
+    try:
+        await asyncio.to_thread(zoom_integration.delete_meeting_recordings, meeting_id)
+    except zoom_integration.ZoomIntegrationError as exc:
+        logger.error("Failed to delete Zoom recordings for meeting %s: %s", meeting_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to delete Zoom recording",
+        ) from exc
+
+    logger.info(
+        "Uploaded Zoom recording for meeting %s to Drive file %s shared with %s",
+        meeting_id,
+        upload_result.get("id"),
+        payload.share_email,
+    )
 
     zoom_record.recording_download_url = recording.get("download_url")
     zoom_record.file_name = recording.get("file_name")
