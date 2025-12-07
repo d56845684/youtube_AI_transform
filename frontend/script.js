@@ -11,13 +11,15 @@ const teacherBookingStatus = document.getElementById("teacher-booking-status");
 const selectedSlotView = document.getElementById("selected-slot");
 const loadAvailabilityBtn = document.getElementById("load-availability");
 const teacherIdInput = document.getElementById("teacher-id-input");
-const bookingTeacherInput = bookingForm?.querySelector("input[name=\"teacherId\"]");
 const teacherTools = document.getElementById("teacher-tools");
 const teacherToolsStatus = document.getElementById("teacher-tools-status");
 const teacherAvailabilityForm = document.getElementById("teacher-availability-form");
+const teacherDateInput = document.getElementById("teacher-date");
+const teacherWeekdayInput = document.getElementById("teacher-weekday");
 const teacherAvailabilityList = document.getElementById("teacher-availability-list");
 const teacherAvailabilityLabel = document.getElementById("teacher-availability-label");
 const teacherAvailabilityStatus = document.getElementById("teacher-availability-status");
+const studentOnlySections = document.querySelectorAll(".student-only");
 
 const sampleAvailabilities = [
   { id: 1, teacher: "Chloe Chen", weekday: "Mon", window: "10:00 - 12:00", is_booked: 0 },
@@ -76,6 +78,22 @@ function formatTimeValue(value) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function formatDateValue(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value.toString();
+  }
+  return date.toLocaleDateString(undefined, { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
+function deriveWeekdayLabel(dateValue) {
+  if (!dateValue) return "-";
+  const parsed = new Date(dateValue);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return parsed.toLocaleDateString("en-US", { weekday: "short" });
+}
+
 async function apiFetch(path, options = {}) {
   const headers = options.headers ? { ...options.headers } : {};
   if (authToken) {
@@ -100,6 +118,14 @@ function formatTimeRange(slot) {
   return `${start} - ${end}`;
 }
 
+function describeAvailability(slot) {
+  if (!slot) return "預約時間待確認";
+  const dateLabel = slot.availability_date
+    ? `${formatDateValue(slot.availability_date)} (${slot.weekday || ""})`
+    : slot.weekday || "未指定日期";
+  return `${dateLabel} ${formatTimeRange(slot)}`.trim();
+}
+
 function normalizeBooking(item) {
   if (!item) return null;
   if (item.link || item.time || item.student) {
@@ -107,7 +133,7 @@ function normalizeBooking(item) {
       student: item.student ?? item.student_id ?? "Unknown",
       teacher: item.teacher ?? item.teacher_id ?? "Unknown",
       platform: item.platform,
-      time: item.time ?? (item.availability ? `${item.availability.weekday} ${formatTimeRange(item.availability)}` : "預約時間待確認"),
+      time: item.time ?? describeAvailability(item.availability),
       status: item.status ?? "已建立",
       link: item.link ?? item.conference_link ?? buildConferenceLink(item.teacher, item.student, item.platform),
     };
@@ -117,7 +143,7 @@ function normalizeBooking(item) {
     student: item.student_id ?? "Unknown",
     teacher: item.teacher_id ?? "Unknown",
     platform: item.platform,
-    time: item.availability ? `${item.availability.weekday} ${formatTimeRange(item.availability)}` : new Date(item.reserved_at).toLocaleString(),
+    time: item.availability ? describeAvailability(item.availability) : new Date(item.reserved_at).toLocaleString(),
     status: "已建立",
     link: item.conference_link,
   };
@@ -134,19 +160,24 @@ function renderTimeline(list = sampleAvailabilities, fromApi = false, target = t
   target.innerHTML =
     list
       .map(
-        (slot) => `
-      <div class="timeline-step" data-slot-id="${slot.id || ""}">
-        <div class="timeline-meta">
-          <strong>${slot.teacher || `Teacher #${slot.teacher_id}`}</strong> • ${slot.weekday} • ${formatTimeRange(slot)}
-          <div class="tag-row">
-            <span class="tag">${fromApi ? "Live API" : "Sample"}</span>
-            ${slot.id ? `<span class="tag">ID ${slot.id}</span>` : ""}
-            <span class="tag ${slot.is_booked ? "tag-muted" : ""}">${slot.is_booked ? "已被預約" : "可預約"}</span>
+        (slot) => {
+          const dateLabel = slot.availability_date
+            ? `${formatDateValue(slot.availability_date)} (${slot.weekday || ""})`
+            : slot.weekday || "未指定日期";
+          return `
+        <div class="timeline-step" data-slot-id="${slot.id || ""}">
+          <div class="timeline-meta">
+            <strong>${slot.teacher || `Teacher #${slot.teacher_id}`}</strong> • ${dateLabel} • ${formatTimeRange(slot)}
+            <div class="tag-row">
+              <span class="tag">${fromApi ? "Live API" : "Sample"}</span>
+              ${slot.id ? `<span class="tag">ID ${slot.id}</span>` : ""}
+              <span class="tag ${slot.is_booked ? "tag-muted" : ""}">${slot.is_booked ? "已被預約" : "可預約"}</span>
+            </div>
           </div>
+          ${selectable ? `<button class="ghost" data-action="select-slot" ${slot.is_booked ? "disabled" : ""}>選擇</button>` : ""}
         </div>
-        ${selectable ? `<button class="ghost" data-action="select-slot" ${slot.is_booked ? "disabled" : ""}>選擇</button>` : ""}
-      </div>
-    `
+      `;
+        }
       )
       .join("") || "<p>沒有可用時段</p>";
 
@@ -188,6 +219,10 @@ function renderAllBookings() {
 function filterStudentBookings(data) {
   if (!currentUser || currentUser.role !== "student") return data;
   return data.filter((item) => {
+    if (item && item.student_id !== undefined && item.student_id !== null) {
+      return `${item.student_id}` === `${currentUser.id}`;
+    }
+
     const normalized = normalizeBooking(item);
     return normalized?.student?.toString().toLowerCase().includes(currentUser.email.toLowerCase());
   });
@@ -196,7 +231,7 @@ function filterStudentBookings(data) {
 async function refreshBookings() {
   if (!bookingTable && !teacherBookingTable) return;
   if (!authToken) {
-    bookingData = sampleBookings.map((item) => ({ ...normalizeBooking(item), status: item.status }));
+    bookingData = sampleBookings;
     renderAllBookings();
     setStatus(bookingStatus, "未登入，顯示示範預約");
     setStatus(teacherBookingStatus, "需以教師身分登入", true);
@@ -205,16 +240,17 @@ async function refreshBookings() {
 
   try {
     const bookings = await apiFetch("/bookings");
-    bookingData = bookings.map((item) => ({ ...normalizeBooking(item), status: item.status ?? "已建立" }));
+    bookingData = bookings;
     renderAllBookings();
-    const studentViewLength = currentUser?.role === "student" ? filterStudentBookings(bookingData).length : bookingData.length;
+    const studentViewLength =
+      currentUser?.role === "student" ? filterStudentBookings(bookings).length : bookings.length;
     setStatus(bookingStatus, `已載入 ${studentViewLength} 筆預約`);
     if (teacherBookingStatus) {
-      setStatus(teacherBookingStatus, `教師已載入 ${bookingData.length} 筆課程/會議`);
+      setStatus(teacherBookingStatus, `教師已載入 ${bookings.length} 筆課程/會議`);
     }
   } catch (error) {
     setStatus(bookingStatus, `讀取預約失敗：${error.message}，顯示示範資料`, true);
-    bookingData = sampleBookings.map((item) => ({ ...normalizeBooking(item), status: item.status }));
+    bookingData = sampleBookings;
     renderAllBookings();
     if (teacherBookingStatus) {
       setStatus(teacherBookingStatus, `教師列表載入失敗：${error.message}，顯示示範資料`, true);
@@ -274,6 +310,9 @@ function setActivePage(target) {
 
 function updateRoleUI() {
   const isTeacher = currentUser?.role === "teacher";
+  if (studentOnlySections.length) {
+    studentOnlySections.forEach((section) => section.classList.toggle("hidden", isTeacher));
+  }
   if (teacherTools) {
     teacherTools.classList.toggle("hidden", !isTeacher);
   }
@@ -296,16 +335,17 @@ function selectSlot(slot) {
   if (!slot) return;
   selectedSlot = slot;
   if (selectedSlotView) {
-    selectedSlotView.textContent = `${slot.weekday} ${formatTimeRange(slot)} ｜ ${slot.teacher || "教師"}（ID ${slot.id || "N/A"}）`;
+    const dateLabel = slot.availability_date
+      ? `${formatDateValue(slot.availability_date)} (${slot.weekday || ""})`
+      : slot.weekday;
+    selectedSlotView.textContent = `${dateLabel} ${formatTimeRange(slot)} ｜ ${slot.teacher || "教師"}（ID ${slot.id || "N/A"}）`;
     selectedSlotView.classList.add("active");
   }
+  if (slot.teacher_id) {
+    syncTeacherInputs(`${slot.teacher_id}`);
+  }
   if (bookingForm) {
-    const teacherInput = bookingForm.querySelector("input[name=\"teacherId\"]");
     const availabilityInput = bookingForm.querySelector("input[name=\"availabilityId\"]");
-    if (teacherInput && (slot.teacher_id || teacherInput.value === "")) {
-      const value = slot.teacher_id ? `${slot.teacher_id}` : teacherInput.value;
-      syncTeacherInputs(value);
-    }
     if (availabilityInput && slot.id) {
       availabilityInput.value = slot.id;
     }
@@ -316,9 +356,6 @@ function syncTeacherInputs(value) {
   if (teacherIdInput && teacherIdInput.value !== value) {
     teacherIdInput.value = value;
   }
-  if (bookingTeacherInput && bookingTeacherInput.value !== value) {
-    bookingTeacherInput.value = value;
-  }
 }
 
 document.querySelectorAll("[data-nav]").forEach((tab) => {
@@ -326,7 +363,7 @@ document.querySelectorAll("[data-nav]").forEach((tab) => {
     setActivePage(tab.dataset.nav);
     updateRoleUI();
     if (tab.dataset.nav === "booking") {
-      const teacherId = teacherIdInput?.value || bookingTeacherInput?.value || "";
+      const teacherId = teacherIdInput?.value || "";
       loadAvailability(teacherId.trim());
       if (currentUser?.role === "teacher") {
         refreshTeacherAvailability();
@@ -339,8 +376,6 @@ if (bookingForm) {
   bookingForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(bookingForm);
-    const studentId = formData.get("studentId") || "";
-    const teacherId = formData.get("teacherId") || "";
     const availabilityId = Number(formData.get("availabilityId"));
     const platform = formData.get("platform");
 
@@ -360,7 +395,7 @@ if (bookingForm) {
         body: JSON.stringify({ availability_id: availabilityId, platform }),
       });
       const normalized = normalizeBooking(booking);
-      bookingData.unshift({ ...normalized, student: normalized.student || studentId, teacher: normalized.teacher || teacherId });
+      bookingData.unshift(normalized);
       renderAllBookings();
       setStatus(linkPreview, `預約成功！會議連結：${normalized.link}`);
       linkPreview.classList.add("status-pill");
@@ -394,7 +429,7 @@ if (loginForm) {
       updateRoleUI();
       syncTeacherInputs(currentUser?.id ? `${currentUser.id}` : teacherIdInput?.value || "");
       setActivePage("booking");
-      const teacherId = teacherIdInput?.value || bookingTeacherInput?.value || "";
+      const teacherId = teacherIdInput?.value || "";
       loadAvailability(teacherId.trim());
       await refreshBookings();
       await refreshTeacherAvailability();
@@ -439,25 +474,29 @@ if (teacherAvailabilityForm) {
       return;
     }
     const formData = new FormData(teacherAvailabilityForm);
-    const weekday = formData.get("weekday");
+    const availabilityDate = formData.get("availabilityDate");
     const startValue = formData.get("startTime");
     const endValue = formData.get("endTime");
-    const startDate = startValue ? new Date(startValue) : null;
-    const endDate = endValue ? new Date(endValue) : null;
+    const startDate = startValue && availabilityDate ? new Date(`${availabilityDate}T${startValue}`) : null;
+    const endDate = endValue && availabilityDate ? new Date(`${availabilityDate}T${endValue}`) : null;
 
-    if (!startDate || !endDate || Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-      setStatus(teacherAvailabilityStatus, "請輸入有效的開始與結束時間", true);
+    if (!availabilityDate || !startDate || !endDate || Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      setStatus(teacherAvailabilityStatus, "請選擇有效的日期與時間", true);
+      return;
+    }
+    if (startDate.toDateString() !== endDate.toDateString()) {
+      setStatus(teacherAvailabilityStatus, "開始與結束時間需在同一天", true);
       return;
     }
     if (startDate >= endDate) {
-      setStatus(teacherAvailabilityStatus, "結束時間需晚於開始時間", true);
+      setStatus(teacherAvailabilityStatus, "請輸入有效的開始與結束時間", true);
       return;
     }
 
     const payload = {
-      weekday,
-      start_time: startDate.toISOString(),
-      end_time: endDate.toISOString(),
+      availability_date: availabilityDate,
+      start_time: startValue,
+      end_time: endValue,
     };
 
     try {
@@ -466,8 +505,15 @@ if (teacherAvailabilityForm) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      setStatus(teacherAvailabilityStatus, `已新增 ${created.weekday} ${formatTimeRange(created)}`);
+      setStatus(
+        teacherAvailabilityStatus,
+        `已新增 ${formatDateValue(created.availability_date)} (${created.weekday}) ${formatTimeRange(created)}`,
+      );
       teacherAvailabilityForm.reset();
+      if (teacherDateInput) {
+        teacherDateInput.value = availabilityDate;
+        teacherWeekdayInput.value = deriveWeekdayLabel(availabilityDate);
+      }
       syncTeacherInputs(currentUser.id ? `${currentUser.id}` : "");
       await refreshTeacherAvailability();
       if (teacherIdInput) {
@@ -481,11 +527,30 @@ if (teacherAvailabilityForm) {
 
 if (loadAvailabilityBtn) {
   loadAvailabilityBtn.addEventListener("click", () => {
-    const teacherId = teacherIdInput?.value || bookingTeacherInput?.value || "";
+    const teacherId = teacherIdInput?.value || "";
     syncTeacherInputs(teacherId.trim());
     loadAvailability(teacherId.trim());
   });
 }
+
+function initializeAvailabilityDateUI() {
+  if (!teacherDateInput) return;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  if (!teacherDateInput.value) {
+    teacherDateInput.value = todayIso;
+  }
+  if (teacherWeekdayInput) {
+    teacherWeekdayInput.value = deriveWeekdayLabel(teacherDateInput.value);
+  }
+
+  teacherDateInput.addEventListener("change", () => {
+    if (teacherWeekdayInput) {
+      teacherWeekdayInput.value = deriveWeekdayLabel(teacherDateInput.value);
+    }
+  });
+}
+
+initializeAvailabilityDateUI();
 
 renderTimeline(sampleAvailabilities, false);
 renderTimeline(sampleAvailabilities, false, teacherAvailabilityList, false);
@@ -494,20 +559,10 @@ renderAllBookings();
 setActivePage("auth");
 updateRoleUI();
 
-const teacherInput = teacherIdInput || bookingTeacherInput;
 if (teacherIdInput) {
   teacherIdInput.addEventListener("input", () => {
     syncTeacherInputs(teacherIdInput.value.trim());
     loadAvailability(teacherIdInput.value.trim());
   });
-}
-
-if (bookingTeacherInput) {
-  bookingTeacherInput.addEventListener("input", () => {
-    syncTeacherInputs(bookingTeacherInput.value.trim());
-  });
-}
-
-if (teacherInput) {
-  loadAvailability(teacherInput.value.trim());
+  loadAvailability(teacherIdInput.value.trim());
 }

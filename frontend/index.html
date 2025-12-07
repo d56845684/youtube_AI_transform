@@ -71,7 +71,7 @@
 
         <section class="page" data-page="booking">
             <div class="card-grid two-column top-align">
-                <article class="card">
+                <article class="card student-only">
                     <div class="section-header">
                         <h2>選擇可預約時段</h2>
                         <span class="status-pill" id="timeline-status">請輸入教師 ID 或使用示範資料</span>
@@ -84,19 +84,13 @@
                     </div>
                     <div class="timeline" id="timeline"></div>
                 </article>
-                <article class="card sticky-card">
+                <article class="card sticky-card student-only">
                     <h2>預約確認</h2>
                     <p>點選左側任一時間後，會自動帶入預約表單。送出時會附帶登入 Token。</p>
                     <div class="selected-slot" id="selected-slot">尚未選取時段</div>
                     <form id="booking-form" class="field-group">
-                        <div class="field-group two-column">
-                            <label>Student ID</label>
-                            <input type="text" name="studentId" placeholder="Student ID" value="42">
-                            <label for="booking-teacher-id">Teacher ID</label>
-                            <input id="booking-teacher-id" type="text" name="teacherId" placeholder="Teacher ID">
-                        </div>
                         <label>Availability ID</label>
-                        <input type="number" name="availabilityId" placeholder="點擊左側時段會自動填入" required>
+                        <input type="number" name="availabilityId" placeholder="點擊左側時段會自動填入" required readonly>
                         <label>平台</label>
                         <select name="platform" id="platform">
                             <option>Google Meet</option>
@@ -117,20 +111,14 @@
                 </div>
                 <p>教師登入後可新增可預約時段，並查看自己目前的課程預約／會議資訊。</p>
                 <form id="teacher-availability-form" class="field-group three-column">
-                    <label for="teacher-weekday">星期</label>
-                    <select id="teacher-weekday" name="weekday" required>
-                        <option value="Mon">Mon</option>
-                        <option value="Tue">Tue</option>
-                        <option value="Wed">Wed</option>
-                        <option value="Thu">Thu</option>
-                        <option value="Fri">Fri</option>
-                        <option value="Sat">Sat</option>
-                        <option value="Sun">Sun</option>
-                    </select>
+                    <label for="teacher-date">日期</label>
+                    <input id="teacher-date" type="date" name="availabilityDate" required>
+                    <label for="teacher-weekday">系統判定星期</label>
+                    <input id="teacher-weekday" type="text" name="weekday" readonly value="-">
                     <label for="teacher-start">開始時間</label>
-                    <input id="teacher-start" type="datetime-local" name="startTime" required>
+                    <input id="teacher-start" type="time" name="startTime" required>
                     <label for="teacher-end">結束時間</label>
-                    <input id="teacher-end" type="datetime-local" name="endTime" required>
+                    <input id="teacher-end" type="time" name="endTime" required>
                     <button type="submit">新增可預約時段</button>
                     <div class="status-line" id="teacher-availability-status" aria-live="polite"></div>
                 </form>
@@ -159,7 +147,7 @@
                 </table>
             </section>
 
-            <section class="card">
+            <section class="card student-only">
                 <div class="section-header">
                     <h3>我的預約</h3>
                     <span class="status-pill" id="booking-status">尚未登入，顯示示範資料</span>

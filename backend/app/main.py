@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import date, datetime, time
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
@@ -49,6 +49,66 @@ def ensure_student(user: models.User) -> None:
 def ensure_superuser(user: models.User) -> None:
     if user.role != models.UserRole.SUPERUSER:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superuser role required")
+
+
+def derive_weekday_name(avail_date: date) -> str:
+    return avail_date.strftime("%a")
+
+
+def ensure_time_with_timezone(slot_time: time) -> time:
+    if slot_time.tzinfo is None:
+        return slot_time.replace(tzinfo=models.UTC_PLUS_8)
+    dummy_dt = datetime.combine(date.today(), slot_time)
+    return dummy_dt.astimezone(models.UTC_PLUS_8).timetz()
+
+
+async def assert_no_overlapping_slots(
+    *,
+    db: AsyncSession,
+    teacher_id: int,
+    availability_date: date,
+    start_time: time,
+    end_time: time,
+    exclude_id: int | None = None,
+) -> None:
+    start_time = ensure_time_with_timezone(start_time)
+    end_time = ensure_time_with_timezone(end_time)
+
+    query = select(models.TeacherAvailability).where(
+        models.TeacherAvailability.teacher_id == teacher_id,
+        models.TeacherAvailability.availability_date == availability_date,
+        models.TeacherAvailability.start_time < end_time,
+        models.TeacherAvailability.end_time > start_time,
+    )
+
+    if exclude_id is not None:
+        query = query.where(models.TeacherAvailability.id != exclude_id)
+
+    result = await db.execute(query)
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Time slot overlaps with an existing availability",
+        )
+
+
+def combine_availability_window(
+    availability: models.TeacherAvailability,
+) -> tuple[datetime, datetime]:
+    start_dt = datetime.combine(availability.availability_date, availability.start_time)
+    end_dt = datetime.combine(availability.availability_date, availability.end_time)
+
+    if start_dt.tzinfo is None:
+        start_dt = start_dt.replace(tzinfo=models.UTC_PLUS_8)
+    else:
+        start_dt = start_dt.astimezone(models.UTC_PLUS_8)
+
+    if end_dt.tzinfo is None:
+        end_dt = end_dt.replace(tzinfo=models.UTC_PLUS_8)
+    else:
+        end_dt = end_dt.astimezone(models.UTC_PLUS_8)
+
+    return start_dt, end_dt
 
 
 async def get_booking_with_permission(
@@ -197,11 +257,29 @@ async def create_availability(
     current_user: models.User = Depends(auth.get_current_user),
 ):
     ensure_teacher(current_user)
+    if payload.start_time >= payload.end_time:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="End time must be later than start time",
+        )
+
+    normalized_start = ensure_time_with_timezone(payload.start_time)
+    normalized_end = ensure_time_with_timezone(payload.end_time)
+
+    await assert_no_overlapping_slots(
+        db=db,
+        teacher_id=current_user.id,
+        availability_date=payload.availability_date,
+        start_time=normalized_start,
+        end_time=normalized_end,
+    )
+
     availability = models.TeacherAvailability(
         teacher_id=current_user.id,
-        weekday=payload.weekday,
-        start_time=normalize_to_utc_plus_8(payload.start_time),
-        end_time=normalize_to_utc_plus_8(payload.end_time),
+        availability_date=payload.availability_date,
+        weekday=derive_weekday_name(payload.availability_date),
+        start_time=normalized_start,
+        end_time=normalized_end,
     )
     db.add(availability)
     await db.commit()
@@ -263,12 +341,40 @@ async def update_availability(
     if current_user.role != models.UserRole.SUPERUSER and availability.teacher_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to update availability")
 
-    if payload.weekday is not None:
-        availability.weekday = payload.weekday
+    availability_date = payload.availability_date or availability.availability_date
+    start_time = (
+        ensure_time_with_timezone(payload.start_time)
+        if payload.start_time is not None
+        else availability.start_time
+    )
+    end_time = (
+        ensure_time_with_timezone(payload.end_time)
+        if payload.end_time is not None
+        else availability.end_time
+    )
+
+    if start_time >= end_time:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="End time must be later than start time",
+        )
+
+    await assert_no_overlapping_slots(
+        db=db,
+        teacher_id=availability.teacher_id,
+        availability_date=availability_date,
+        start_time=start_time,
+        end_time=end_time,
+        exclude_id=availability.id,
+    )
+
+    if payload.availability_date is not None:
+        availability.availability_date = payload.availability_date
+        availability.weekday = derive_weekday_name(payload.availability_date)
     if payload.start_time is not None:
-        availability.start_time = normalize_to_utc_plus_8(payload.start_time)
+        availability.start_time = start_time
     if payload.end_time is not None:
-        availability.end_time = normalize_to_utc_plus_8(payload.end_time)
+        availability.end_time = end_time
     if payload.is_booked is not None:
         availability.is_booked = payload.is_booked
 
@@ -367,8 +473,7 @@ async def book_availability(
             booking.conference_link = google_event.meet_link
             booking.platform = "Google Meet"
 
-        start_dt = normalize_to_utc_plus_8(availability.start_time)
-        end_dt = normalize_to_utc_plus_8(availability.end_time)
+        start_dt, end_dt = combine_availability_window(availability)
 
         meeting_record = models.MeetingRecord(
             booking_id=booking.id,
@@ -543,15 +648,18 @@ async def delete_order(
 async def list_bookings(
     current_user: models.User = Depends(auth.get_current_user), db: AsyncSession = Depends(get_db)
 ):
+    base_query = select(models.LessonBooking).options(
+        selectinload(models.LessonBooking.availability)
+    )
     if current_user.role == models.UserRole.SUPERUSER:
-        result = await db.execute(select(models.LessonBooking))
+        result = await db.execute(base_query)
     elif current_user.role == models.UserRole.TEACHER:
         result = await db.execute(
-            select(models.LessonBooking).where(models.LessonBooking.teacher_id == current_user.id)
+            base_query.where(models.LessonBooking.teacher_id == current_user.id)
         )
     else:
         result = await db.execute(
-            select(models.LessonBooking).where(models.LessonBooking.student_id == current_user.id)
+            base_query.where(models.LessonBooking.student_id == current_user.id)
         )
     return result.scalars().all()
 

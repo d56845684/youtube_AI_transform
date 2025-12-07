@@ -1,6 +1,16 @@
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from sqlalchemy import Column, DateTime, Enum as PgEnum, ForeignKey, Integer, Numeric, String
+from sqlalchemy import (
+    Column,
+    Date,
+    DateTime,
+    Enum as PgEnum,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Time,
+)
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -38,9 +48,10 @@ class TeacherAvailability(Base):
 
     id = Column(Integer, primary_key=True)
     teacher_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    availability_date = Column(Date, nullable=False)
     weekday = Column(String, nullable=False)
-    start_time = Column(DateTime(timezone=True), nullable=False)
-    end_time = Column(DateTime(timezone=True), nullable=False)
+    start_time = Column(Time(timezone=True), nullable=False)
+    end_time = Column(Time(timezone=True), nullable=False)
     is_booked = Column(Integer, default=0, nullable=False)
 
     teacher = relationship("User", back_populates="availabilities")
