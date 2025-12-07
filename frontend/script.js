@@ -326,7 +326,9 @@ function renderBookings(targetTable, data) {
       const statusDesc = item.status_desc || "";
       const defaultReason = statusDesc || "學生取消預約";
       const actionCell = isStudentTable
-        ? `<button class="ghost" data-action="cancel-booking" data-booking-id="${item.id}" data-default-reason="${escapeAttribute(defaultReason)}" ${canCancel ? "" : "disabled"}>${item.status === "取消" ? "已取消" : "取消預約"}</button>`
+        ? item.drive_link
+          ? `<a class="muted" href="${escapeAttribute(item.drive_link)}" target="_blank" rel="noopener">Drive 連結</a>`
+          : `<button class="ghost" data-action="cancel-booking" data-booking-id="${item.id}" data-default-reason="${escapeAttribute(defaultReason)}" ${canCancel ? "" : "disabled"}>${item.status === "取消" ? "已取消" : "取消預約"}</button>`
         : "";
       const recordingCell = !isStudentTable
         ? `<div class="stacked">
