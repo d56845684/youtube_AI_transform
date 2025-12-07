@@ -593,6 +593,7 @@ async def update_booking(
 @app.delete("/bookings/{booking_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Bookings"])
 async def delete_booking(
     booking_id: int,
+    payload: schemas.BookingCancel | None = None,
     current_user: models.User = Depends(auth.get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -615,19 +616,24 @@ async def delete_booking(
         )
         calendar_event = event_result.scalar_one_or_none()
         if calendar_event:
+            try:
+                await google_integration.delete_calendar_event(calendar_event)
+            except google_integration.GoogleIntegrationError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Failed to cancel Google Calendar event",
+                ) from exc
+
             calendar_event.deleted_at = models.now_in_utc_plus_8()
 
-        record_result = await db.execute(
-            select(models.MeetingRecord).where(
-                models.MeetingRecord.booking_id == booking.id,
-                models.MeetingRecord.deleted_at.is_(None),
-            )
-        )
-        meeting_record = record_result.scalar_one_or_none()
-        if meeting_record:
-            meeting_record.deleted_at = models.now_in_utc_plus_8()
-
-        booking.deleted_at = models.now_in_utc_plus_8()
+        if current_user.role == models.UserRole.TEACHER:
+            default_reason = "教師取消"
+        elif current_user.role == models.UserRole.SUPERUSER:
+            default_reason = "管理員取消"
+        else:
+            default_reason = "學生取消"
+        booking.status = models.LessonBooking.BookingStatus.CANCELLED
+        booking.status_desc = (payload.status_desc if payload else None) or default_reason
         await db.commit()
     except Exception:
         await db.rollback()

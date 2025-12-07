@@ -21,6 +21,10 @@ const teacherAvailabilityList = document.getElementById("teacher-availability-li
 const teacherAvailabilityLabel = document.getElementById("teacher-availability-label");
 const teacherAvailabilityStatus = document.getElementById("teacher-availability-status");
 const studentOnlySections = document.querySelectorAll(".student-only");
+const cancelModal = document.getElementById("cancel-modal");
+const cancelReasonInput = document.getElementById("cancel-reason");
+const confirmCancelBtn = document.getElementById("confirm-cancel");
+const cancelDismissButtons = document.querySelectorAll("[data-dismiss=cancel]");
 
 const sampleAvailabilities = [
   { id: 1, teacher: "Chloe Chen", weekday: "Mon", window: "10:00 - 12:00", is_booked: 0 },
@@ -31,25 +35,29 @@ const sampleAvailabilities = [
 
 const sampleBookings = [
   {
+    id: 1,
     student: "Student A",
     teacher: "Chloe Chen",
     platform: "Google Meet",
     time: "Mon 10:00",
-    status: "已確認",
+    status: "成功",
   },
   {
+    id: 2,
     student: "Student B",
     teacher: "Daniel Wu",
     platform: "VOOM",
     time: "Wed 15:00",
-    status: "待上課",
+    status: "成功",
   },
   {
+    id: 3,
     student: "Student C",
     teacher: "Hana Sato",
     platform: "Google Meet",
     time: "Fri 09:00",
-    status: "已完成",
+    status: "取消",
+    status_desc: "示範：臨時有事",
   },
 ];
 
@@ -64,6 +72,7 @@ let currentUser = null;
 let bookingData = [];
 let selectedSlot = null;
 let teacherDirectory = [];
+let pendingCancelBookingId = null;
 
 function setStatus(target, message, isError = false) {
   if (!target) return;
@@ -78,6 +87,11 @@ function formatTimeValue(value) {
     return value.toString().slice(0, 5);
   }
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function escapeAttribute(value) {
+  if (value === undefined || value === null) return "";
+  return value.toString().replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 function formatDateValue(value) {
@@ -128,6 +142,57 @@ function describeAvailability(slot) {
   return `${dateLabel} ${formatTimeRange(slot)}`.trim();
 }
 
+function openCancelModal(bookingId, defaultReason = "學生取消預約") {
+  if (!cancelModal) return;
+  pendingCancelBookingId = bookingId;
+  cancelModal.classList.add("show");
+  if (cancelReasonInput) {
+    cancelReasonInput.value = defaultReason || "";
+    cancelReasonInput.focus();
+  }
+}
+
+function closeCancelModal() {
+  pendingCancelBookingId = null;
+  cancelModal?.classList.remove("show");
+  if (cancelReasonInput) cancelReasonInput.value = "";
+}
+
+cancelDismissButtons.forEach((btn) => {
+  btn.addEventListener("click", closeCancelModal);
+});
+
+if (confirmCancelBtn) {
+  confirmCancelBtn.addEventListener("click", async () => {
+    if (!pendingCancelBookingId) {
+      closeCancelModal();
+      return;
+    }
+
+    const reason = cancelReasonInput?.value?.trim() || "學生取消預約";
+    try {
+      await apiFetch(`/bookings/${pendingCancelBookingId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status_desc: reason }),
+      });
+      setStatus(bookingStatus, "預約已取消");
+      await refreshBookings();
+    } catch (error) {
+      setStatus(bookingStatus, `取消失敗：${error.message}`, true);
+    }
+    closeCancelModal();
+  });
+}
+
+if (cancelModal) {
+  cancelModal.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeCancelModal();
+    }
+  });
+}
+
 function normalizeBooking(item) {
   if (!item) return null;
 
@@ -149,11 +214,15 @@ function normalizeBooking(item) {
       "預約時間待確認";
 
     return {
+      id: item.id,
+      student_id: item.student_id,
+      teacher_id: item.teacher_id,
       student: studentName,
       teacher: teacherName,
       platform: item.platform || "Google Meet",
       time: timeLabel,
-      status: item.status || "已建立",
+      status: item.status || "成功",
+      status_desc: item.status_desc || "",
       link:
         item.conference_link ||
         item.link ||
@@ -162,11 +231,15 @@ function normalizeBooking(item) {
   }
 
   return {
+    id: item.id,
+    student_id: item.student_id,
+    teacher_id: item.teacher_id,
     student: studentName,
     teacher: teacherName,
     platform: item.platform,
     time: item.time ?? describeAvailability(item.availability),
-    status: item.status ?? "已建立",
+    status: item.status ?? "成功",
+    status_desc: item.status_desc || "",
     link: item.link ?? item.conference_link ?? buildConferenceLink(item.teacher, item.student, item.platform),
   };
 }
@@ -218,19 +291,49 @@ function renderTimeline(list = sampleAvailabilities, fromApi = false, target = t
 function renderBookings(targetTable, data) {
   if (!targetTable) return;
   const normalized = data.map(normalizeBooking).filter(Boolean);
+  const isStudentTable = targetTable === bookingTable;
   targetTable.innerHTML = normalized
-    .map(
-      (item) => `
+    .map((item) => {
+      const canCancel =
+        isStudentTable &&
+        currentUser?.role === "student" &&
+        `${item.student_id}` === `${currentUser?.id}` &&
+        item.status !== "取消";
+      const statusBadge = `<span class="tag ${item.status === "取消" ? "tag-muted" : ""}">${item.status || "成功"}</span>`;
+      const statusDesc = item.status_desc || "";
+      const defaultReason = statusDesc || "學生取消預約";
+      const actionCell = isStudentTable
+        ? `<button class="ghost" data-action="cancel-booking" data-booking-id="${item.id}" data-default-reason="${escapeAttribute(defaultReason)}" ${
+            canCancel ? "" : "disabled"
+          }>${
+            item.status === "取消" ? "已取消" : "取消預約"
+          }</button>`
+        : "";
+      return `
         <tr>
           <td>${item.student}</td>
           <td>${item.teacher}</td>
           <td>${item.time}</td>
           <td>${item.platform}</td>
+          <td>${statusBadge}</td>
+          <td>${statusDesc || "-"}</td>
           <td><a href="${item.link}" target="_blank" rel="noopener">${item.link}</a></td>
+          ${isStudentTable ? `<td>${actionCell}</td>` : ""}
         </tr>
-      `
-    )
+      `;
+    })
     .join("");
+
+  if (isStudentTable) {
+    targetTable.querySelectorAll("[data-action=cancel-booking]").forEach((btn) => {
+      btn.addEventListener("click", async (event) => {
+        const bookingId = event.currentTarget.dataset.bookingId;
+        if (!bookingId) return;
+        const defaultReason = event.currentTarget.dataset.defaultReason || "學生取消預約";
+        openCancelModal(bookingId, defaultReason);
+      });
+    });
+  }
 }
 
 function renderAllBookings() {
@@ -628,7 +731,7 @@ refreshTeacherDirectory();
 
 renderTimeline(sampleAvailabilities, false);
 renderTimeline(sampleAvailabilities, false, teacherAvailabilityList, false);
-bookingData = sampleBookings.map((item) => ({ ...normalizeBooking(item), status: item.status }));
+bookingData = sampleBookings.map((item) => normalizeBooking(item));
 renderAllBookings();
 setActivePage("auth");
 updateRoleUI();

@@ -143,6 +143,8 @@
                             <th>老師</th>
                             <th>時間</th>
                             <th>平台</th>
+                            <th>狀態</th>
+                            <th>原因</th>
                             <th>連結</th>
                         </tr>
                     </thead>
@@ -163,7 +165,10 @@
                             <th>老師</th>
                             <th>時間</th>
                             <th>平台</th>
+                            <th>狀態</th>
+                            <th>原因</th>
                             <th>連結</th>
+                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -171,6 +176,28 @@
             </section>
         </section>
     </main>
+
+    <div class="modal" id="cancel-modal" role="dialog" aria-modal="true" aria-labelledby="cancel-modal-title">
+        <div class="modal__backdrop" data-dismiss="cancel"></div>
+        <div class="modal__dialog">
+            <div class="modal__header">
+                <div>
+                    <p class="eyebrow">預約取消</p>
+                    <h3 id="cancel-modal-title">確認取消這筆預約嗎？</h3>
+                    <p class="muted">取消後將會移除行事曆邀請並釋放老師時段。</p>
+                </div>
+                <button class="icon-button" type="button" aria-label="關閉" data-dismiss="cancel">×</button>
+            </div>
+            <div class="modal__body">
+                <label for="cancel-reason">取消原因（選填）</label>
+                <input id="cancel-reason" type="text" placeholder="例如：臨時有事，想重新預約" />
+            </div>
+            <div class="modal__footer">
+                <button class="ghost" type="button" data-dismiss="cancel">不用，返回</button>
+                <button class="primary" type="button" id="confirm-cancel">確認取消</button>
+            </div>
+        </div>
+    </div>
 
     <script src="script.js"></script>
 </body>

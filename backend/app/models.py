@@ -82,6 +82,10 @@ class Order(TimestampMixin, Base):
 class LessonBooking(TimestampMixin, Base):
     __tablename__ = "lesson_bookings"
 
+    class BookingStatus(str, Enum):
+        SUCCESS = "成功"
+        CANCELLED = "取消"
+
     id = Column(Integer, primary_key=True)
     availability_id = Column(Integer, ForeignKey("teacher_availabilities.id", ondelete="SET NULL"), nullable=True)
     student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -91,6 +95,12 @@ class LessonBooking(TimestampMixin, Base):
     )
     platform = Column(String, nullable=False, default="Google Meet")
     conference_link = Column(String, nullable=False)
+    status = Column(
+        PgEnum(BookingStatus, name="booking_status"),
+        default=BookingStatus.SUCCESS,
+        nullable=False,
+    )
+    status_desc = Column(String, nullable=True)
 
     availability = relationship("TeacherAvailability", back_populates="booking")
     student = relationship("User", foreign_keys=[student_id], back_populates="bookings")
