@@ -219,6 +219,10 @@ function renderAllBookings() {
 function filterStudentBookings(data) {
   if (!currentUser || currentUser.role !== "student") return data;
   return data.filter((item) => {
+    if (item && item.student_id !== undefined && item.student_id !== null) {
+      return `${item.student_id}` === `${currentUser.id}`;
+    }
+
     const normalized = normalizeBooking(item);
     return normalized?.student?.toString().toLowerCase().includes(currentUser.email.toLowerCase());
   });
@@ -227,7 +231,7 @@ function filterStudentBookings(data) {
 async function refreshBookings() {
   if (!bookingTable && !teacherBookingTable) return;
   if (!authToken) {
-    bookingData = sampleBookings.map((item) => ({ ...normalizeBooking(item), status: item.status }));
+    bookingData = sampleBookings;
     renderAllBookings();
     setStatus(bookingStatus, "未登入，顯示示範預約");
     setStatus(teacherBookingStatus, "需以教師身分登入", true);
@@ -236,16 +240,17 @@ async function refreshBookings() {
 
   try {
     const bookings = await apiFetch("/bookings");
-    bookingData = bookings.map((item) => ({ ...normalizeBooking(item), status: item.status ?? "已建立" }));
+    bookingData = bookings;
     renderAllBookings();
-    const studentViewLength = currentUser?.role === "student" ? filterStudentBookings(bookingData).length : bookingData.length;
+    const studentViewLength =
+      currentUser?.role === "student" ? filterStudentBookings(bookings).length : bookings.length;
     setStatus(bookingStatus, `已載入 ${studentViewLength} 筆預約`);
     if (teacherBookingStatus) {
-      setStatus(teacherBookingStatus, `教師已載入 ${bookingData.length} 筆課程/會議`);
+      setStatus(teacherBookingStatus, `教師已載入 ${bookings.length} 筆課程/會議`);
     }
   } catch (error) {
     setStatus(bookingStatus, `讀取預約失敗：${error.message}，顯示示範資料`, true);
-    bookingData = sampleBookings.map((item) => ({ ...normalizeBooking(item), status: item.status }));
+    bookingData = sampleBookings;
     renderAllBookings();
     if (teacherBookingStatus) {
       setStatus(teacherBookingStatus, `教師列表載入失敗：${error.message}，顯示示範資料`, true);
