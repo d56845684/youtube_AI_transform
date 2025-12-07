@@ -626,16 +626,6 @@ async def delete_booking(
 
             calendar_event.deleted_at = models.now_in_utc_plus_8()
 
-        record_result = await db.execute(
-            select(models.MeetingRecord).where(
-                models.MeetingRecord.booking_id == booking.id,
-                models.MeetingRecord.deleted_at.is_(None),
-            )
-        )
-        meeting_record = record_result.scalar_one_or_none()
-        if meeting_record:
-            meeting_record.deleted_at = models.now_in_utc_plus_8()
-
         if current_user.role == models.UserRole.TEACHER:
             default_reason = "教師取消"
         elif current_user.role == models.UserRole.SUPERUSER:
@@ -644,7 +634,6 @@ async def delete_booking(
             default_reason = "學生取消"
         booking.status = models.LessonBooking.BookingStatus.CANCELLED
         booking.status_desc = (payload.status_desc if payload else None) or default_reason
-        booking.deleted_at = models.now_in_utc_plus_8()
         await db.commit()
     except Exception:
         await db.rollback()

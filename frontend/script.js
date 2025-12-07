@@ -21,6 +21,10 @@ const teacherAvailabilityList = document.getElementById("teacher-availability-li
 const teacherAvailabilityLabel = document.getElementById("teacher-availability-label");
 const teacherAvailabilityStatus = document.getElementById("teacher-availability-status");
 const studentOnlySections = document.querySelectorAll(".student-only");
+const cancelModal = document.getElementById("cancel-modal");
+const cancelReasonInput = document.getElementById("cancel-reason");
+const confirmCancelBtn = document.getElementById("confirm-cancel");
+const cancelDismissButtons = document.querySelectorAll("[data-dismiss=cancel]");
 
 const sampleAvailabilities = [
   { id: 1, teacher: "Chloe Chen", weekday: "Mon", window: "10:00 - 12:00", is_booked: 0 },
@@ -68,6 +72,7 @@ let currentUser = null;
 let bookingData = [];
 let selectedSlot = null;
 let teacherDirectory = [];
+let pendingCancelBookingId = null;
 
 function setStatus(target, message, isError = false) {
   if (!target) return;
@@ -82,6 +87,11 @@ function formatTimeValue(value) {
     return value.toString().slice(0, 5);
   }
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function escapeAttribute(value) {
+  if (value === undefined || value === null) return "";
+  return value.toString().replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 function formatDateValue(value) {
@@ -130,6 +140,57 @@ function describeAvailability(slot) {
     ? `${formatDateValue(slot.availability_date)} (${slot.weekday || ""})`
     : slot.weekday || "未指定日期";
   return `${dateLabel} ${formatTimeRange(slot)}`.trim();
+}
+
+function openCancelModal(bookingId, defaultReason = "學生取消預約") {
+  if (!cancelModal) return;
+  pendingCancelBookingId = bookingId;
+  cancelModal.classList.add("show");
+  if (cancelReasonInput) {
+    cancelReasonInput.value = defaultReason || "";
+    cancelReasonInput.focus();
+  }
+}
+
+function closeCancelModal() {
+  pendingCancelBookingId = null;
+  cancelModal?.classList.remove("show");
+  if (cancelReasonInput) cancelReasonInput.value = "";
+}
+
+cancelDismissButtons.forEach((btn) => {
+  btn.addEventListener("click", closeCancelModal);
+});
+
+if (confirmCancelBtn) {
+  confirmCancelBtn.addEventListener("click", async () => {
+    if (!pendingCancelBookingId) {
+      closeCancelModal();
+      return;
+    }
+
+    const reason = cancelReasonInput?.value?.trim() || "學生取消預約";
+    try {
+      await apiFetch(`/bookings/${pendingCancelBookingId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status_desc: reason }),
+      });
+      setStatus(bookingStatus, "預約已取消");
+      await refreshBookings();
+    } catch (error) {
+      setStatus(bookingStatus, `取消失敗：${error.message}`, true);
+    }
+    closeCancelModal();
+  });
+}
+
+if (cancelModal) {
+  cancelModal.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeCancelModal();
+    }
+  });
 }
 
 function normalizeBooking(item) {
@@ -240,10 +301,13 @@ function renderBookings(targetTable, data) {
         item.status !== "取消";
       const statusBadge = `<span class="tag ${item.status === "取消" ? "tag-muted" : ""}">${item.status || "成功"}</span>`;
       const statusDesc = item.status_desc || "";
+      const defaultReason = statusDesc || "學生取消預約";
       const actionCell = isStudentTable
-        ? `<button class="ghost" data-action="cancel-booking" data-booking-id="${item.id}" ${
+        ? `<button class="ghost" data-action="cancel-booking" data-booking-id="${item.id}" data-default-reason="${escapeAttribute(defaultReason)}" ${
             canCancel ? "" : "disabled"
-          }>${item.status === "取消" ? "已取消" : "取消預約"}</button>`
+          }>${
+            item.status === "取消" ? "已取消" : "取消預約"
+          }</button>`
         : "";
       return `
         <tr>
@@ -265,18 +329,8 @@ function renderBookings(targetTable, data) {
       btn.addEventListener("click", async (event) => {
         const bookingId = event.currentTarget.dataset.bookingId;
         if (!bookingId) return;
-        const reason = window.prompt("請輸入取消原因（選填）", "學生取消預約");
-        try {
-          await apiFetch(`/bookings/${bookingId}`, {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status_desc: reason || "學生取消預約" }),
-          });
-          setStatus(bookingStatus, "預約已取消");
-          await refreshBookings();
-        } catch (error) {
-          setStatus(bookingStatus, `取消失敗：${error.message}`, true);
-        }
+        const defaultReason = event.currentTarget.dataset.defaultReason || "學生取消預約";
+        openCancelModal(bookingId, defaultReason);
       });
     });
   }
