@@ -117,20 +117,14 @@
                 </div>
                 <p>教師登入後可新增可預約時段，並查看自己目前的課程預約／會議資訊。</p>
                 <form id="teacher-availability-form" class="field-group three-column">
-                    <label for="teacher-weekday">星期</label>
-                    <select id="teacher-weekday" name="weekday" required>
-                        <option value="Mon">Mon</option>
-                        <option value="Tue">Tue</option>
-                        <option value="Wed">Wed</option>
-                        <option value="Thu">Thu</option>
-                        <option value="Fri">Fri</option>
-                        <option value="Sat">Sat</option>
-                        <option value="Sun">Sun</option>
-                    </select>
+                    <label for="teacher-date">日期</label>
+                    <input id="teacher-date" type="date" name="availabilityDate" required>
+                    <label for="teacher-weekday">系統判定星期</label>
+                    <input id="teacher-weekday" type="text" name="weekday" readonly value="-">
                     <label for="teacher-start">開始時間</label>
-                    <input id="teacher-start" type="datetime-local" name="startTime" required>
+                    <input id="teacher-start" type="time" name="startTime" required>
                     <label for="teacher-end">結束時間</label>
-                    <input id="teacher-end" type="datetime-local" name="endTime" required>
+                    <input id="teacher-end" type="time" name="endTime" required>
                     <button type="submit">新增可預約時段</button>
                     <div class="status-line" id="teacher-availability-status" aria-live="polite"></div>
                 </form>
