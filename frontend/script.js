@@ -472,15 +472,20 @@ async function loadAvailability(teacherId) {
 
   try {
     const availability = await apiFetch(`/teachers/${trimmedId}/availability`);
-    if (!availability.length) {
+    const activeList = Array.isArray(availability)
+      ? availability.filter((slot) => !slot.deleted_at)
+      : [];
+    const bookableSlots = activeList.filter((slot) => !slot.is_booked);
+
+    if (!bookableSlots.length) {
       renderTimeline([], true);
       setStatus(timelineStatus, "目前無可預約時段", true);
       return;
     }
-    renderTimeline(availability, true);
-    const teacherName = availability[0]?.teacher?.full_name;
+    renderTimeline(bookableSlots, true);
+    const teacherName = bookableSlots[0]?.teacher?.full_name;
     const label = teacherName ? `${teacherName}` : "所選老師";
-    setStatus(timelineStatus, `${label}目前有 ${availability.length} 筆可預約時段`);
+    setStatus(timelineStatus, `${label}目前有 ${bookableSlots.length} 筆可預約時段`);
   } catch (error) {
     renderTimeline([], false);
     setStatus(timelineStatus, `載入失敗：${error.message}`, true);
