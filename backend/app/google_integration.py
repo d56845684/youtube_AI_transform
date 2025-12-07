@@ -138,3 +138,27 @@ async def create_calendar_event_for_booking(
     await db.flush()
 
     return record
+
+
+async def delete_calendar_event(calendar_event: models.GoogleCalendarEvent) -> None:
+    """Delete a Google Calendar event for all attendee emails."""
+
+    credentials = await asyncio.to_thread(_load_credentials)
+    calendar_id = calendar_event.calendar_id or os.getenv("GOOGLE_CALENDAR_ID", "primary")
+
+    def _delete_event() -> None:
+        service = build("calendar", "v3", credentials=credentials)
+        (
+            service.events()
+            .delete(
+                calendarId=calendar_id,
+                eventId=calendar_event.calendar_event_id,
+                sendUpdates="all",
+            )
+            .execute()
+        )
+
+    try:
+        await asyncio.to_thread(_delete_event)
+    except HttpError as exc:
+        raise GoogleIntegrationError("Failed to delete calendar event") from exc

@@ -89,6 +89,11 @@ class BookingUpdate(BaseModel):
     conference_link: Optional[str]
 
 
+class BookingStatus(str, Enum):
+    success = "成功"
+    cancelled = "取消"
+
+
 class BookingOut(BaseModel):
     id: int
     availability: Optional[AvailabilityOut]
@@ -98,6 +103,8 @@ class BookingOut(BaseModel):
     teacher: Optional[UserPublic]
     platform: str
     conference_link: str
+    status: BookingStatus
+    status_desc: Optional[str]
     reserved_at: datetime
     created_at: datetime
     updated_at: datetime
@@ -105,6 +112,10 @@ class BookingOut(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class BookingCancel(BaseModel):
+    status_desc: Optional[str] = None
 
 
 class OrderCreate(BaseModel):
