@@ -259,3 +259,5 @@ class UserUpdate(BaseModel):
     full_name: Optional[constr(min_length=1)]
     role: Optional[UserRole]
     password: Optional[constr(min_length=8)]
+
+BookingOut.update_forward_refs(ZoomRecordingOut=ZoomRecordingOut)
