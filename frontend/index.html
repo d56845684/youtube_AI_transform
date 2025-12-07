@@ -89,14 +89,8 @@
                     <p>點選左側任一時間後，會自動帶入預約表單。送出時會附帶登入 Token。</p>
                     <div class="selected-slot" id="selected-slot">尚未選取時段</div>
                     <form id="booking-form" class="field-group">
-                        <div class="field-group two-column">
-                            <label>Student ID</label>
-                            <input type="text" name="studentId" placeholder="Student ID" value="42">
-                            <label for="booking-teacher-id">Teacher ID</label>
-                            <input id="booking-teacher-id" type="text" name="teacherId" placeholder="Teacher ID">
-                        </div>
                         <label>Availability ID</label>
-                        <input type="number" name="availabilityId" placeholder="點擊左側時段會自動填入" required>
+                        <input type="number" name="availabilityId" placeholder="點擊左側時段會自動填入" required readonly>
                         <label>平台</label>
                         <select name="platform" id="platform">
                             <option>Google Meet</option>

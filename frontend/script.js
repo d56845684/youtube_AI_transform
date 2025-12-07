@@ -11,7 +11,6 @@ const teacherBookingStatus = document.getElementById("teacher-booking-status");
 const selectedSlotView = document.getElementById("selected-slot");
 const loadAvailabilityBtn = document.getElementById("load-availability");
 const teacherIdInput = document.getElementById("teacher-id-input");
-const bookingTeacherInput = bookingForm?.querySelector("input[name=\"teacherId\"]");
 const teacherTools = document.getElementById("teacher-tools");
 const teacherToolsStatus = document.getElementById("teacher-tools-status");
 const teacherAvailabilityForm = document.getElementById("teacher-availability-form");
@@ -338,13 +337,11 @@ function selectSlot(slot) {
     selectedSlotView.textContent = `${dateLabel} ${formatTimeRange(slot)} ｜ ${slot.teacher || "教師"}（ID ${slot.id || "N/A"}）`;
     selectedSlotView.classList.add("active");
   }
+  if (slot.teacher_id) {
+    syncTeacherInputs(`${slot.teacher_id}`);
+  }
   if (bookingForm) {
-    const teacherInput = bookingForm.querySelector("input[name=\"teacherId\"]");
     const availabilityInput = bookingForm.querySelector("input[name=\"availabilityId\"]");
-    if (teacherInput && (slot.teacher_id || teacherInput.value === "")) {
-      const value = slot.teacher_id ? `${slot.teacher_id}` : teacherInput.value;
-      syncTeacherInputs(value);
-    }
     if (availabilityInput && slot.id) {
       availabilityInput.value = slot.id;
     }
@@ -355,9 +352,6 @@ function syncTeacherInputs(value) {
   if (teacherIdInput && teacherIdInput.value !== value) {
     teacherIdInput.value = value;
   }
-  if (bookingTeacherInput && bookingTeacherInput.value !== value) {
-    bookingTeacherInput.value = value;
-  }
 }
 
 document.querySelectorAll("[data-nav]").forEach((tab) => {
@@ -365,7 +359,7 @@ document.querySelectorAll("[data-nav]").forEach((tab) => {
     setActivePage(tab.dataset.nav);
     updateRoleUI();
     if (tab.dataset.nav === "booking") {
-      const teacherId = teacherIdInput?.value || bookingTeacherInput?.value || "";
+      const teacherId = teacherIdInput?.value || "";
       loadAvailability(teacherId.trim());
       if (currentUser?.role === "teacher") {
         refreshTeacherAvailability();
@@ -378,8 +372,6 @@ if (bookingForm) {
   bookingForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(bookingForm);
-    const studentId = formData.get("studentId") || "";
-    const teacherId = formData.get("teacherId") || "";
     const availabilityId = Number(formData.get("availabilityId"));
     const platform = formData.get("platform");
 
@@ -399,7 +391,7 @@ if (bookingForm) {
         body: JSON.stringify({ availability_id: availabilityId, platform }),
       });
       const normalized = normalizeBooking(booking);
-      bookingData.unshift({ ...normalized, student: normalized.student || studentId, teacher: normalized.teacher || teacherId });
+      bookingData.unshift(normalized);
       renderAllBookings();
       setStatus(linkPreview, `預約成功！會議連結：${normalized.link}`);
       linkPreview.classList.add("status-pill");
@@ -433,7 +425,7 @@ if (loginForm) {
       updateRoleUI();
       syncTeacherInputs(currentUser?.id ? `${currentUser.id}` : teacherIdInput?.value || "");
       setActivePage("booking");
-      const teacherId = teacherIdInput?.value || bookingTeacherInput?.value || "";
+      const teacherId = teacherIdInput?.value || "";
       loadAvailability(teacherId.trim());
       await refreshBookings();
       await refreshTeacherAvailability();
@@ -531,7 +523,7 @@ if (teacherAvailabilityForm) {
 
 if (loadAvailabilityBtn) {
   loadAvailabilityBtn.addEventListener("click", () => {
-    const teacherId = teacherIdInput?.value || bookingTeacherInput?.value || "";
+    const teacherId = teacherIdInput?.value || "";
     syncTeacherInputs(teacherId.trim());
     loadAvailability(teacherId.trim());
   });
@@ -563,20 +555,10 @@ renderAllBookings();
 setActivePage("auth");
 updateRoleUI();
 
-const teacherInput = teacherIdInput || bookingTeacherInput;
 if (teacherIdInput) {
   teacherIdInput.addEventListener("input", () => {
     syncTeacherInputs(teacherIdInput.value.trim());
     loadAvailability(teacherIdInput.value.trim());
   });
-}
-
-if (bookingTeacherInput) {
-  bookingTeacherInput.addEventListener("input", () => {
-    syncTeacherInputs(bookingTeacherInput.value.trim());
-  });
-}
-
-if (teacherInput) {
-  loadAvailability(teacherInput.value.trim());
+  loadAvailability(teacherIdInput.value.trim());
 }
