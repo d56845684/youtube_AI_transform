@@ -5,6 +5,11 @@ from urllib.parse import quote
 
 import requests
 
+from .logger import get_logger
+
+
+logger = get_logger(__name__)
+
 
 class ZoomIntegrationError(Exception):
     """Raised when Zoom API interactions fail or are misconfigured."""
@@ -36,6 +41,7 @@ def _get_zoom_access_token() -> str:
         )
         resp.raise_for_status()
     except requests.RequestException as exc:
+        logger.error("Failed to obtain Zoom access token: %s", exc)
         raise ZoomIntegrationError("Failed to obtain Zoom access token") from exc
 
     token = resp.json().get("access_token")
@@ -63,6 +69,7 @@ def download_meeting_recording(meeting_id: str) -> dict:
         resp = requests.get(url, headers=headers, timeout=10)
         resp.raise_for_status()
     except requests.RequestException as exc:
+        logger.error("Failed to list Zoom recordings for meeting %s: %s", meeting_id, exc)
         raise ZoomIntegrationError("Failed to list Zoom recordings") from exc
 
     recording_files = resp.json().get("recording_files", [])
@@ -78,6 +85,7 @@ def download_meeting_recording(meeting_id: str) -> dict:
         download_resp = requests.get(download_url, headers=headers, timeout=30)
         download_resp.raise_for_status()
     except requests.RequestException as exc:
+        logger.error("Failed to download Zoom recording for meeting %s: %s", meeting_id, exc)
         raise ZoomIntegrationError("Failed to download Zoom recording") from exc
 
     file_name = target_file.get("file_name") or f"zoom-recording-{meeting_id}.mp4"
@@ -104,6 +112,7 @@ def delete_meeting_recordings(meeting_id: str) -> None:
         resp = requests.delete(url, headers=headers, timeout=10)
         resp.raise_for_status()
     except requests.RequestException as exc:
+        logger.error("Failed to delete Zoom recordings for meeting %s: %s", meeting_id, exc)
         raise ZoomIntegrationError("Failed to delete Zoom recordings") from exc
 
 
@@ -138,6 +147,7 @@ def create_zoom_meeting(
         resp = requests.post(url, headers=headers, json=body, timeout=10)
         resp.raise_for_status()
     except requests.RequestException as exc:
+        logger.error("Failed to create Zoom meeting for user %s: %s", user_id, exc)
         raise ZoomIntegrationError("Failed to create Zoom meeting") from exc
 
     meeting = resp.json()
