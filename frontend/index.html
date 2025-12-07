@@ -78,8 +78,8 @@
                     </div>
                     <p>系統會依據教師 ID 呼叫 <code>/teachers/{id}/availability</code>，成功登入後會帶入 Token。</p>
                     <div class="field-group inline-inputs">
-                        <label for="teacherId">Teacher ID</label>
-                        <input type="number" name="teacherId" placeholder="例如 18" value="18">
+                        <label for="teacher-id-input">Teacher ID</label>
+                        <input type="number" id="teacher-id-input" name="teacherId" placeholder="例如 18">
                         <button type="button" id="load-availability">載入時段</button>
                     </div>
                     <div class="timeline" id="timeline"></div>
@@ -92,8 +92,8 @@
                         <div class="field-group two-column">
                             <label>Student ID</label>
                             <input type="text" name="studentId" placeholder="Student ID" value="42">
-                            <label>Teacher ID</label>
-                            <input type="text" name="teacherId" placeholder="Teacher ID" value="18">
+                            <label for="booking-teacher-id">Teacher ID</label>
+                            <input id="booking-teacher-id" type="text" name="teacherId" placeholder="Teacher ID">
                         </div>
                         <label>Availability ID</label>
                         <input type="number" name="availabilityId" placeholder="點擊左側時段會自動填入" required>

@@ -8,6 +8,8 @@ const registerForm = document.getElementById("register-form");
 const bookingStatus = document.getElementById("booking-status");
 const selectedSlotView = document.getElementById("selected-slot");
 const loadAvailabilityBtn = document.getElementById("load-availability");
+const teacherIdInput = document.getElementById("teacher-id-input");
+const bookingTeacherInput = bookingForm?.querySelector("input[name=\"teacherId\"]");
 
 const sampleAvailabilities = [
   { id: 1, teacher: "Chloe Chen", weekday: "Mon", window: "10:00 - 12:00", is_booked: 0 },
@@ -236,7 +238,8 @@ function selectSlot(slot) {
     const teacherInput = bookingForm.querySelector("input[name=\"teacherId\"]");
     const availabilityInput = bookingForm.querySelector("input[name=\"availabilityId\"]");
     if (teacherInput && (slot.teacher_id || teacherInput.value === "")) {
-      teacherInput.value = slot.teacher_id || teacherInput.value;
+      const value = slot.teacher_id ? `${slot.teacher_id}` : teacherInput.value;
+      syncTeacherInputs(value);
     }
     if (availabilityInput && slot.id) {
       availabilityInput.value = slot.id;
@@ -244,12 +247,21 @@ function selectSlot(slot) {
   }
 }
 
+function syncTeacherInputs(value) {
+  if (teacherIdInput && teacherIdInput.value !== value) {
+    teacherIdInput.value = value;
+  }
+  if (bookingTeacherInput && bookingTeacherInput.value !== value) {
+    bookingTeacherInput.value = value;
+  }
+}
+
 document.querySelectorAll("[data-nav]").forEach((tab) => {
   tab.addEventListener("click", () => {
     setActivePage(tab.dataset.nav);
     if (tab.dataset.nav === "booking") {
-      const teacherInput = bookingForm?.querySelector("input[name=\"teacherId\"]");
-      loadAvailability(teacherInput?.value || "");
+      const teacherId = teacherIdInput?.value || bookingTeacherInput?.value || "";
+      loadAvailability(teacherId.trim());
     }
   });
 });
@@ -347,8 +359,9 @@ if (registerForm) {
 
 if (loadAvailabilityBtn) {
   loadAvailabilityBtn.addEventListener("click", () => {
-    const teacherInput = bookingForm?.querySelector("input[name=\"teacherId\"]");
-    loadAvailability(teacherInput?.value || "");
+    const teacherId = teacherIdInput?.value || bookingTeacherInput?.value || "";
+    syncTeacherInputs(teacherId.trim());
+    loadAvailability(teacherId.trim());
   });
 }
 
@@ -357,8 +370,20 @@ bookingData = sampleBookings.map((item) => ({ ...normalizeBooking(item), status:
 renderAllBookings();
 setActivePage("auth");
 
-const teacherInput = bookingForm?.querySelector("input[name=\"teacherId\"]");
+const teacherInput = teacherIdInput || bookingTeacherInput;
+if (teacherIdInput) {
+  teacherIdInput.addEventListener("input", () => {
+    syncTeacherInputs(teacherIdInput.value.trim());
+    loadAvailability(teacherIdInput.value.trim());
+  });
+}
+
+if (bookingTeacherInput) {
+  bookingTeacherInput.addEventListener("input", () => {
+    syncTeacherInputs(bookingTeacherInput.value.trim());
+  });
+}
+
 if (teacherInput) {
-  teacherInput.addEventListener("change", () => loadAvailability(teacherInput.value));
-  loadAvailability(teacherInput.value);
+  loadAvailability(teacherInput.value.trim());
 }
