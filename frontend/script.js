@@ -12,7 +12,6 @@ const selectedSlotView = document.getElementById("selected-slot");
 const loadAvailabilityBtn = document.getElementById("load-availability");
 const teacherIdInput = document.getElementById("teacher-id-input");
 const teacherNameInput = document.getElementById("teacher-name-input");
-const teacherNameOptions = document.getElementById("teacher-name-options");
 const teacherTools = document.getElementById("teacher-tools");
 const teacherToolsStatus = document.getElementById("teacher-tools-status");
 const teacherAvailabilityForm = document.getElementById("teacher-availability-form");
@@ -131,27 +130,44 @@ function describeAvailability(slot) {
 
 function normalizeBooking(item) {
   if (!item) return null;
-  if (item.link || item.time || item.student) {
+
+  const studentName =
+    item.student?.full_name || item.student_full_name || item.student || item.student_id || "Unknown";
+  const teacherName =
+    item.teacher?.full_name || item.teacher_full_name || item.teacher || item.teacher_id || "Unknown";
+
+  const hasNestedUsers =
+    (item.student && typeof item.student === "object") ||
+    (item.teacher && typeof item.teacher === "object") ||
+    item.availability;
+
+  if (hasNestedUsers || item.conference_link || item.reserved_at) {
+    const timeLabel =
+      (item.availability && describeAvailability(item.availability)) ||
+      (item.reserved_at && new Date(item.reserved_at).toLocaleString()) ||
+      item.time ||
+      "預約時間待確認";
+
     return {
-      student: item.student ?? item.student_id ?? "Unknown",
-      teacher: item.teacher ?? item.teacher_id ?? "Unknown",
-      platform: item.platform,
-      time: item.time ?? describeAvailability(item.availability),
-      status: item.status ?? "已建立",
-      link: item.link ?? item.conference_link ?? buildConferenceLink(item.teacher, item.student, item.platform),
+      student: studentName,
+      teacher: teacherName,
+      platform: item.platform || "Google Meet",
+      time: timeLabel,
+      status: item.status || "已建立",
+      link:
+        item.conference_link ||
+        item.link ||
+        buildConferenceLink(item.teacher_id || teacherName, item.student_id || studentName, item.platform),
     };
   }
-
-  const studentName = item.student?.full_name || item.student_full_name || item.student_id || "Unknown";
-  const teacherName = item.teacher?.full_name || item.teacher_full_name || item.teacher_id || "Unknown";
 
   return {
     student: studentName,
     teacher: teacherName,
     platform: item.platform,
-    time: item.availability ? describeAvailability(item.availability) : new Date(item.reserved_at).toLocaleString(),
-    status: "已建立",
-    link: item.conference_link,
+    time: item.time ?? describeAvailability(item.availability),
+    status: item.status ?? "已建立",
+    link: item.link ?? item.conference_link ?? buildConferenceLink(item.teacher, item.student, item.platform),
   };
 }
 
@@ -291,16 +307,22 @@ async function loadAvailability(teacherId) {
 }
 
 function renderTeacherOptions(list) {
-  if (!teacherNameOptions) return;
-  teacherNameOptions.innerHTML = list
-    .map((teacher) => `<option value="${teacher.full_name}" data-id="${teacher.id}"></option>`)
-    .join("");
+  if (!teacherNameInput) return;
+  const selected = teacherNameInput.value;
+  teacherNameInput.innerHTML =
+    '<option value="">選擇老師（自動帶入 ID）</option>' +
+    list.map((teacher) => `<option value="${teacher.id}">${teacher.full_name}</option>`).join("");
+  if (selected) {
+    teacherNameInput.value = selected;
+  }
 }
 
 function findTeacherIdByName(name) {
   if (!name) return null;
-  const normalized = name.trim().toLowerCase();
-  const match = teacherDirectory.find((teacher) => teacher.full_name.toLowerCase() === normalized);
+  const normalized = name.toString().trim();
+  if (/^\d+$/.test(normalized)) return normalized;
+  const lower = normalized.toLowerCase();
+  const match = teacherDirectory.find((teacher) => teacher.full_name.toLowerCase() === lower);
   return match?.id ?? null;
 }
 
@@ -373,7 +395,8 @@ function selectSlot(slot) {
     const dateLabel = slot.availability_date
       ? `${formatDateValue(slot.availability_date)} (${slot.weekday || ""})`
       : slot.weekday;
-    selectedSlotView.textContent = `${dateLabel} ${formatTimeRange(slot)} ｜ ${slot.teacher || "教師"}（ID ${slot.id || "N/A"}）`;
+    const teacherLabel = slot.teacher?.full_name || slot.teacher_full_name || slot.teacher || slot.teacher_id || "教師";
+    selectedSlotView.textContent = `${dateLabel} ${formatTimeRange(slot)} ｜ ${teacherLabel}（ID ${slot.id || "N/A"}）`;
     selectedSlotView.classList.add("active");
   }
   if (slot.teacher_id) {
@@ -392,8 +415,8 @@ function syncTeacherInputs(value) {
     teacherIdInput.value = value;
   }
   const matched = teacherDirectory.find((teacher) => `${teacher.id}` === `${value}`);
-  if (teacherNameInput && matched && teacherNameInput.value !== matched.full_name) {
-    teacherNameInput.value = matched.full_name;
+  if (teacherNameInput && matched && `${teacherNameInput.value}` !== `${matched.id}`) {
+    teacherNameInput.value = `${matched.id}`;
   }
 }
 
@@ -412,10 +435,11 @@ document.querySelectorAll("[data-nav]").forEach((tab) => {
 });
 
 if (teacherNameInput) {
-  teacherNameInput.addEventListener("input", (event) => {
-    const matchedId = findTeacherIdByName(event.target.value);
-    if (matchedId) {
-      syncTeacherInputs(`${matchedId}`);
+  teacherNameInput.addEventListener("change", (event) => {
+    const selectedId = event.target.value;
+    if (selectedId) {
+      syncTeacherInputs(`${selectedId}`);
+      loadAvailability(selectedId);
     }
   });
 }
