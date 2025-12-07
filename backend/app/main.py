@@ -58,7 +58,8 @@ def derive_weekday_name(avail_date: date) -> str:
 def ensure_time_with_timezone(slot_time: time) -> time:
     if slot_time.tzinfo is None:
         return slot_time.replace(tzinfo=models.UTC_PLUS_8)
-    return slot_time.astimezone(models.UTC_PLUS_8).timetz()
+    dummy_dt = datetime.combine(date.today(), slot_time)
+    return dummy_dt.astimezone(models.UTC_PLUS_8).timetz()
 
 
 async def assert_no_overlapping_slots(
