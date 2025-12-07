@@ -72,6 +72,8 @@ async def create_calendar_event_for_booking(
     teacher: models.User,
     student: models.User,
     reserved_by_email: str,
+    conference_solution_type: str | None = "hangoutsMeet",
+    extra_description_lines: list[str] | None = None,
 ) -> models.GoogleCalendarEvent:
     """Create a Google Calendar event and persist it with attendee emails."""
 
@@ -90,7 +92,12 @@ async def create_calendar_event_for_booking(
     )
 
     summary = f"Lesson: {student.full_name} ↔ {teacher.full_name}"
-    description = f"Platform: {booking.platform}\nLink: {booking.conference_link}"
+    description_lines = [
+        f"Platform: {booking.platform}",
+        f"Link: {booking.conference_link}",
+        *(extra_description_lines or []),
+    ]
+    description = "\n".join(description_lines)
     attendee_emails = sorted({teacher.email, student.email})
 
     def _insert_event() -> dict:
@@ -101,13 +108,14 @@ async def create_calendar_event_for_booking(
             "start": {"dateTime": start_dt.isoformat(), "timeZone": "UTC"},
             "end": {"dateTime": end_dt.isoformat(), "timeZone": "UTC"},
             "attendees": [{"email": email} for email in attendee_emails],
-            "conferenceData": {
+        }
+        if conference_solution_type:
+            event_body["conferenceData"] = {
                 "createRequest": {
                     "requestId": f"booking-{booking.id}-{uuid.uuid4()}",
-                    "conferenceSolutionKey": {"type": "hangoutsMeet"},
+                    "conferenceSolutionKey": {"type": conference_solution_type},
                 }
-            },
-        }
+            }
         return (
             service.events()
             .insert(calendarId=calendar_id, body=event_body, conferenceDataVersion=1)

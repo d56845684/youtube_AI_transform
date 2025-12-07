@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import date, datetime, time
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -7,7 +8,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import auth, google_integration, models, schemas
+from . import auth, google_integration, models, schemas, zoom_integration
 from .database import Base, engine, get_db
 
 app = FastAPI(title="Language Tutor Marketplace")
@@ -490,7 +491,12 @@ async def book_availability(
         if teacher is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Teacher unavailable")
 
-        platform_domain = "meet.google.com" if payload.platform == "Google Meet" else "voom.com"
+        platform_domain_map = {
+            "Google Meet": "meet.google.com",
+            "Zoom": "zoom.us",
+            "VOOM": "voom.com",
+        }
+        platform_domain = platform_domain_map.get(payload.platform, "voom.com")
         now_ts = int(datetime.now(tz=models.UTC_PLUS_8).timestamp())
         fallback_link = f"https://{platform_domain}/{teacher.id}-{current_user.id}-{now_ts}"
 
@@ -505,6 +511,9 @@ async def book_availability(
         )
         db.add(booking)
         await db.flush()
+
+        start_dt, end_dt = combine_availability_window(availability)
+        duration_minutes = max(1, int((end_dt - start_dt).total_seconds() // 60))
 
         if payload.platform == "Google Meet":
             try:
@@ -533,7 +542,46 @@ async def book_availability(
             booking.conference_link = google_event.meet_link
             booking.platform = "Google Meet"
 
-        start_dt, end_dt = combine_availability_window(availability)
+        elif payload.platform in {"Zoom", "VOOM"}:
+            try:
+                zoom_meeting = await asyncio.to_thread(
+                    zoom_integration.create_zoom_meeting,
+                    start_time=start_dt,
+                    duration_minutes=duration_minutes,
+                    topic=f"Lesson: {current_user.full_name} ↔ {teacher.full_name}",
+                )
+            except zoom_integration.ZoomIntegrationError as exc:
+                await db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Failed to generate Zoom meeting",
+                ) from exc
+
+            booking.conference_link = zoom_meeting["join_url"]
+            booking.platform = "Zoom"
+            zoom_description_lines = [
+                f"Zoom Meeting ID: {zoom_meeting['id']}",
+                f"Host Start URL: {zoom_meeting['start_url']}",
+                f"Join URL: {zoom_meeting['join_url']}",
+            ]
+
+            try:
+                google_event = await google_integration.create_calendar_event_for_booking(
+                    db=db,
+                    booking=booking,
+                    availability=availability,
+                    teacher=teacher,
+                    student=current_user,
+                    reserved_by_email=current_user.email,
+                    conference_solution_type=None,
+                    extra_description_lines=zoom_description_lines,
+                )
+            except google_integration.GoogleIntegrationError as exc:
+                await db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Failed to create Google Calendar event",
+                ) from exc
 
         meeting_record = models.MeetingRecord(
             booking_id=booking.id,

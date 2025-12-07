@@ -46,7 +46,7 @@ const sampleBookings = [
     id: 2,
     student: "Student B",
     teacher: "Daniel Wu",
-    platform: "VOOM",
+    platform: "Zoom",
     time: "Wed 15:00",
     status: "成功",
   },
@@ -245,7 +245,8 @@ function normalizeBooking(item) {
 }
 
 function buildConferenceLink(teacherId, studentId, platform) {
-  const platformDomain = platform === "Google Meet" ? "meet.google.com" : "voom.com";
+  const platformDomain =
+    platform === "Google Meet" ? "meet.google.com" : platform === "Zoom" ? "zoom.us" : "voom.com";
   const timestamp = Math.floor(Date.now() / 1000);
   return `https://${platformDomain}/${teacherId}-${studentId}-${timestamp}`;
 }
