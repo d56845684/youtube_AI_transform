@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Language Tutor Marketplace</title>
+    <title>學生預約入口</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -11,28 +11,26 @@
         <div class="container hero">
             <div>
                 <div class="badges">
-                    <span class="badge">FastAPI + PostgreSQL</span>
-                    <span class="badge">JWT Auth</span>
-                    <span class="badge">Google Meet / VOOM</span>
+                    <span class="badge">學生登入 / 註冊</span>
+                    <span class="badge">JWT 驗證</span>
+                    <span class="badge">立即預約</span>
                 </div>
-                <h1>Language Tutor Marketplace</h1>
-                <p>讓學生購買課堂點數、預約老師時段，老師維護可教時間，並自動生成線上會議連結的教學平台。</p>
-                <p class="footer-note">啟動 docker-compose 後，前端由 Nginx 提供，後端 API 與資料庫直接串接。</p>
+                <h1>線上家教預約中心</h1>
+                <p>學生登入或註冊後，即可查看老師可預約時段，點擊選擇並送出課程預約，同時在同一頁面檢視自己的預約清單。</p>
+                <p class="footer-note">若未啟動後端，畫面會顯示示範資料，方便快速瀏覽流程。</p>
             </div>
-            <div class="card">
-                <h3>API Quick Start</h3>
-                <ol>
-                    <li>註冊 <code>/auth/register</code>（角色 student 或 teacher）。</li>
-                    <li>登入取得 JWT <code>/auth/token</code>。</li>
-                    <li>教師建立時段 <code>/teachers/availability</code>，學生查詢 <code>/teachers/&lt;id&gt;/availability</code>。</li>
-                    <li>學生下訂單 <code>/orders</code>、用點數預約 <code>/bookings</code> 並指定 Google Meet / VOOM。</li>
+            <div class="card mini-card">
+                <h3>使用步驟</h3>
+                <ol class="step-list">
+                    <li>註冊並登入取得 Token。</li>
+                    <li>自動切換到「預約介面」。</li>
+                    <li>點選老師時段，確認後送出預約。</li>
                 </ol>
             </div>
         </div>
         <nav class="nav-tabs container" aria-label="page tabs">
             <button class="tab active" data-nav="auth">登入 / 註冊</button>
-            <button class="tab" data-nav="booking">查看 / 預約</button>
-            <button class="tab" data-nav="admin">平台管理</button>
+            <button class="tab" data-nav="booking">預約介面</button>
         </nav>
     </header>
 
@@ -41,7 +39,7 @@
             <div class="card-grid two-column">
                 <article class="card">
                     <h2>登入</h2>
-                    <p>透過 JWT 取得存取權杖，支援 student / teacher 角色。</p>
+                    <p>輸入帳密後即可取得 JWT Token，頁面會自動切換到預約介面。</p>
                     <form id="login-form" class="field-group">
                         <input type="email" name="email" placeholder="Email" required>
                         <input type="password" name="password" placeholder="密碼" required>
@@ -55,7 +53,7 @@
                 </article>
                 <article class="card">
                     <h2>註冊</h2>
-                    <p>建立帳號後即可在下方預約或管理介面查看資料。</p>
+                    <p>建立學生帳號，立即登入並查看老師空檔。</p>
                     <form id="register-form" class="field-group">
                         <input type="text" name="fullName" placeholder="姓名" required>
                         <input type="email" name="email" placeholder="Email" required>
@@ -69,39 +67,44 @@
                     </form>
                 </article>
             </div>
-            <section class="card">
-                <h3>快速 API 對照</h3>
-                <div class="tag-row">
-                    <span class="tag">POST /auth/register</span>
-                    <span class="tag">POST /auth/token</span>
-                    <span class="tag">以角色切換 JWT 權限</span>
-                </div>
-            </section>
         </section>
 
         <section class="page" data-page="booking">
-            <div class="card-grid two-column">
+            <div class="card-grid two-column top-align">
                 <article class="card">
-                    <h2>查看可預約時段</h2>
-                    <p>直接呼叫 <code>/teachers/{id}/availability</code>，並回退到示範資料。</p>
+                    <div class="section-header">
+                        <h2>選擇可預約時段</h2>
+                        <span class="status-pill" id="timeline-status">請輸入教師 ID 或使用示範資料</span>
+                    </div>
+                    <p>系統會依據教師 ID 呼叫 <code>/teachers/{id}/availability</code>，成功登入後會帶入 Token。</p>
+                    <div class="field-group inline-inputs">
+                        <label for="teacherId">Teacher ID</label>
+                        <input type="number" name="teacherId" placeholder="例如 18" value="18">
+                        <button type="button" id="load-availability">載入時段</button>
+                    </div>
                     <div class="timeline" id="timeline"></div>
-                    <div class="status-line" id="timeline-status"></div>
                 </article>
-                <article class="card">
-                    <h2>進行預約</h2>
-                    <p>填入學生與老師資訊，即會透過 API 產生會議連結。</p>
+                <article class="card sticky-card">
+                    <h2>預約確認</h2>
+                    <p>點選左側任一時間後，會自動帶入預約表單。送出時會附帶登入 Token。</p>
+                    <div class="selected-slot" id="selected-slot">尚未選取時段</div>
                     <form id="booking-form" class="field-group">
                         <div class="field-group two-column">
+                            <label>Student ID</label>
                             <input type="text" name="studentId" placeholder="Student ID" value="42">
+                            <label>Teacher ID</label>
                             <input type="text" name="teacherId" placeholder="Teacher ID" value="18">
                         </div>
-                        <input type="number" name="availabilityId" placeholder="Availability ID" required>
+                        <label>Availability ID</label>
+                        <input type="number" name="availabilityId" placeholder="點擊左側時段會自動填入" required>
+                        <label>平台</label>
                         <select name="platform" id="platform">
                             <option>Google Meet</option>
                             <option>VOOM</option>
                         </select>
-                        <input type="text" name="topic" placeholder="主題（選填）">
-                        <button type="submit">產生預約連結</button>
+                        <label>主題（選填）</label>
+                        <input type="text" name="topic" placeholder="如：口說練習"> 
+                        <button type="submit">送出預約</button>
                         <div id="link-preview" aria-live="polite"></div>
                     </form>
                 </article>
@@ -110,8 +113,9 @@
             <section class="card">
                 <div class="section-header">
                     <h3>我的預約</h3>
-                    <span class="status-pill">模擬 GET /bookings</span>
+                    <span class="status-pill" id="booking-status">尚未登入，顯示示範資料</span>
                 </div>
+                <p>登入後會帶入 JWT Token 呼叫 <code>/bookings</code>，只顯示當前學生的預約紀錄。</p>
                 <table class="table-preview" id="booking-table">
                     <thead>
                         <tr>
@@ -120,53 +124,6 @@
                             <th>時間</th>
                             <th>平台</th>
                             <th>連結</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </section>
-        </section>
-
-        <section class="page" data-page="admin">
-            <div class="card-grid two-column">
-                <article class="card">
-                    <h2>平台管理</h2>
-                    <p>依角色或特定帳號查詢所有預約紀錄，對應 <code>/bookings</code> 的管理者視角。</p>
-                    <form id="admin-filter" class="field-group">
-                        <select name="scope">
-                            <option value="all">全部預約</option>
-                            <option value="student">只看學生</option>
-                            <option value="teacher">只看老師</option>
-                        </select>
-                        <input type="text" name="keyword" placeholder="搜尋學生或老師 Email">
-                        <button type="submit">套用篩選</button>
-                    </form>
-                    <div class="status-line" id="admin-status">已套用全部預約</div>
-                </article>
-                <article class="card">
-                    <h2>即時摘要</h2>
-                    <div class="stats-grid" id="admin-stats"></div>
-                    <div class="tag-row">
-                        <span class="tag">GET /bookings?scope=admin</span>
-                        <span class="tag">篩選學生 / 老師</span>
-                        <span class="tag">整合會議連結</span>
-                    </div>
-                </article>
-            </div>
-
-            <section class="card">
-                <div class="section-header">
-                    <h3>預約情況</h3>
-                    <span class="status-pill" id="admin-pill">顯示全部</span>
-                </div>
-                <table class="table-preview" id="admin-table">
-                    <thead>
-                        <tr>
-                            <th>學生</th>
-                            <th>老師</th>
-                            <th>平台</th>
-                            <th>狀態</th>
-                            <th>會議</th>
                         </tr>
                     </thead>
                     <tbody></tbody>

@@ -3,12 +3,11 @@ const linkPreview = document.getElementById("link-preview");
 const timeline = document.getElementById("timeline");
 const timelineStatus = document.getElementById("timeline-status");
 const bookingTable = document.querySelector("#booking-table tbody");
-const adminTable = document.querySelector("#admin-table tbody");
-const adminStatus = document.getElementById("admin-status");
-const adminPill = document.getElementById("admin-pill");
-const adminStats = document.getElementById("admin-stats");
 const loginForm = document.getElementById("login-form");
 const registerForm = document.getElementById("register-form");
+const bookingStatus = document.getElementById("booking-status");
+const selectedSlotView = document.getElementById("selected-slot");
+const loadAvailabilityBtn = document.getElementById("load-availability");
 
 const sampleAvailabilities = [
   { id: 1, teacher: "Chloe Chen", weekday: "Mon", window: "10:00 - 12:00", is_booked: 0 },
@@ -50,7 +49,7 @@ const API_BASE =
 let authToken = null;
 let currentUser = null;
 let bookingData = [];
-let adminFilter = { scope: "all", keyword: "" };
+let selectedSlot = null;
 
 function setStatus(target, message, isError = false) {
   if (!target) return;
@@ -117,17 +116,29 @@ function renderTimeline(list = sampleAvailabilities, fromApi = false) {
     list
       .map(
         (slot) => `
-      <div class="timeline-step">
-        <strong>${slot.teacher || `Teacher #${slot.teacher_id}`}</strong> • ${slot.weekday} • ${formatTimeRange(slot)}
-        <div class="tag-row">
-          <span class="tag">${fromApi ? "Live API" : "Sample"}</span>
-          ${slot.id ? `<span class="tag">ID ${slot.id}</span>` : ""}
-          <span class="tag">${slot.is_booked ? "已被預約" : "Bookable"}</span>
+      <div class="timeline-step" data-slot-id="${slot.id || ""}">
+        <div class="timeline-meta">
+          <strong>${slot.teacher || `Teacher #${slot.teacher_id}`}</strong> • ${slot.weekday} • ${formatTimeRange(slot)}
+          <div class="tag-row">
+            <span class="tag">${fromApi ? "Live API" : "Sample"}</span>
+            ${slot.id ? `<span class="tag">ID ${slot.id}</span>` : ""}
+            <span class="tag ${slot.is_booked ? "tag-muted" : ""}">${slot.is_booked ? "已被預約" : "可預約"}</span>
+          </div>
         </div>
+        <button class="ghost" data-action="select-slot" ${slot.is_booked ? "disabled" : ""}>選擇</button>
       </div>
     `
       )
       .join("") || "<p>沒有可用時段</p>";
+
+  timeline.querySelectorAll("[data-action=select-slot]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      const wrapper = event.target.closest(".timeline-step");
+      const id = wrapper?.dataset.slotId;
+      const slot = list.find((item) => `${item.id}` === id);
+      selectSlot(slot || list[0]);
+    });
+  });
 }
 
 function renderBookings(targetTable, data) {
@@ -148,91 +159,35 @@ function renderBookings(targetTable, data) {
     .join("");
 }
 
-function renderAdminStats(list) {
-  if (!adminStats) return;
-  const total = list.length;
-  const byPlatform = list.reduce((acc, item) => {
-    acc[item.platform] = (acc[item.platform] || 0) + 1;
-    return acc;
-  }, {});
-
-  adminStats.innerHTML = `
-    <div class="stat-card">
-      <strong>總預約</strong>
-      <span>${total} 筆</span>
-    </div>
-    <div class="stat-card">
-      <strong>Google Meet</strong>
-      <span>${byPlatform["Google Meet"] || 0} 筆</span>
-    </div>
-    <div class="stat-card">
-      <strong>VOOM</strong>
-      <span>${byPlatform["VOOM"] || 0} 筆</span>
-    </div>
-  `;
-}
-
-function renderAdminBookings(filter, data = bookingData) {
-  if (!adminTable) return;
-  const normalized = data.map(normalizeBooking).filter(Boolean);
-  const filtered = normalized.filter((booking) => {
-    if (filter.scope === "student") {
-      return booking.student.toString().toLowerCase().includes(filter.keyword);
-    }
-    if (filter.scope === "teacher") {
-      return booking.teacher.toString().toLowerCase().includes(filter.keyword);
-    }
-    return (
-      booking.student.toString().toLowerCase().includes(filter.keyword) ||
-      booking.teacher.toString().toLowerCase().includes(filter.keyword)
-    );
-  });
-
-  adminTable.innerHTML = filtered
-    .map(
-      (item) => `
-        <tr>
-          <td>${item.student}</td>
-          <td>${item.teacher}</td>
-          <td>${item.platform}</td>
-          <td>${item.status}</td>
-          <td><a href="${item.link}" target="_blank" rel="noopener">${item.link}</a></td>
-        </tr>
-      `
-    )
-    .join("");
-
-  if (adminPill) {
-    const scopeLabel = filter.scope === "all" ? "顯示全部" : `篩選：${filter.scope}`;
-    adminPill.textContent = scopeLabel;
-  }
-  if (adminStatus) {
-    adminStatus.textContent = `目前共 ${filtered.length} 筆，關鍵字「${filter.keyword || "無"}」`;
-  }
-  renderAdminStats(filtered);
-}
-
 function renderAllBookings() {
   renderBookings(bookingTable, bookingData);
-  renderAdminBookings(adminFilter, bookingData);
+}
+
+function filterStudentBookings(data) {
+  if (!currentUser || currentUser.role !== "student") return data;
+  return data.filter((item) => {
+    const normalized = normalizeBooking(item);
+    return normalized?.student?.toString().toLowerCase().includes(currentUser.email.toLowerCase());
+  });
 }
 
 async function refreshBookings() {
-  if (!bookingTable && !adminTable) return;
+  if (!bookingTable) return;
   if (!authToken) {
     bookingData = sampleBookings.map((item) => ({ ...normalizeBooking(item), status: item.status }));
     renderAllBookings();
-    setStatus(adminStatus, "未登入，顯示示範預約");
+    setStatus(bookingStatus, "未登入，顯示示範預約");
     return;
   }
 
   try {
     const bookings = await apiFetch("/bookings");
-    bookingData = bookings.map((item) => ({ ...normalizeBooking(item), status: item.status ?? "已建立" }));
+    const filtered = filterStudentBookings(bookings);
+    bookingData = filtered.map((item) => ({ ...normalizeBooking(item), status: item.status ?? "已建立" }));
     renderAllBookings();
-    setStatus(adminStatus, `已載入 ${bookingData.length} 筆實際預約`);
+    setStatus(bookingStatus, `已載入 ${bookingData.length} 筆預約`);
   } catch (error) {
-    setStatus(adminStatus, `讀取預約失敗：${error.message}，顯示示範資料`, true);
+    setStatus(bookingStatus, `讀取預約失敗：${error.message}，顯示示範資料`, true);
     bookingData = sampleBookings.map((item) => ({ ...normalizeBooking(item), status: item.status }));
     renderAllBookings();
   }
@@ -268,6 +223,25 @@ function setActivePage(target) {
   document.querySelectorAll(".page").forEach((page) => {
     page.classList.toggle("active", page.dataset.page === target);
   });
+}
+
+function selectSlot(slot) {
+  if (!slot) return;
+  selectedSlot = slot;
+  if (selectedSlotView) {
+    selectedSlotView.textContent = `${slot.weekday} ${formatTimeRange(slot)} ｜ ${slot.teacher || "教師"}（ID ${slot.id || "N/A"}）`;
+    selectedSlotView.classList.add("active");
+  }
+  if (bookingForm) {
+    const teacherInput = bookingForm.querySelector("input[name=\"teacherId\"]");
+    const availabilityInput = bookingForm.querySelector("input[name=\"availabilityId\"]");
+    if (teacherInput && (slot.teacher_id || teacherInput.value === "")) {
+      teacherInput.value = slot.teacher_id || teacherInput.value;
+    }
+    if (availabilityInput && slot.id) {
+      availabilityInput.value = slot.id;
+    }
+  }
 }
 
 document.querySelectorAll("[data-nav]").forEach((tab) => {
@@ -336,6 +310,7 @@ if (loginForm) {
 
       currentUser = await apiFetch("/users/me");
       setStatus(document.getElementById("login-status"), `使用者：${currentUser.email}（${currentUser.role}）`);
+      setActivePage("booking");
       await refreshBookings();
     } catch (error) {
       setStatus(document.getElementById("login-status"), `登入失敗：${error.message}`, true);
@@ -370,16 +345,10 @@ if (registerForm) {
   });
 }
 
-const adminFilterForm = document.getElementById("admin-filter");
-if (adminFilterForm) {
-  adminFilterForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const formData = new FormData(adminFilterForm);
-    adminFilter = {
-      scope: formData.get("scope"),
-      keyword: (formData.get("keyword") || "").toLowerCase(),
-    };
-    renderAdminBookings(adminFilter, bookingData);
+if (loadAvailabilityBtn) {
+  loadAvailabilityBtn.addEventListener("click", () => {
+    const teacherInput = bookingForm?.querySelector("input[name=\"teacherId\"]");
+    loadAvailability(teacherInput?.value || "");
   });
 }
 
