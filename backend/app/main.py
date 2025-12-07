@@ -869,6 +869,14 @@ async def upload_zoom_recording(
             detail="Failed to upload recording to Google Drive",
         ) from exc
 
+    try:
+        await asyncio.to_thread(zoom_integration.delete_meeting_recordings, meeting_id)
+    except zoom_integration.ZoomIntegrationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to delete Zoom recording",
+        ) from exc
+
     zoom_record.recording_download_url = recording.get("download_url")
     zoom_record.file_name = recording.get("file_name")
     zoom_record.drive_file_id = upload_result.get("id")

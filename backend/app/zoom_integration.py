@@ -92,6 +92,21 @@ def download_meeting_recording(meeting_id: str) -> dict:
     }
 
 
+def delete_meeting_recordings(meeting_id: str) -> None:
+    """Delete all Zoom cloud recordings for the given meeting ID."""
+
+    access_token = _get_zoom_access_token()
+    encoded_meeting_id = quote(meeting_id, safe="")
+    url = f"https://api.zoom.us/v2/meetings/{encoded_meeting_id}/recordings"
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    try:
+        resp = requests.delete(url, headers=headers, timeout=10)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        raise ZoomIntegrationError("Failed to delete Zoom recordings") from exc
+
+
 def create_zoom_meeting(
     *,
     start_time: datetime,
