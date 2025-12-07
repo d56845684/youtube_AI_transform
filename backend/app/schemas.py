@@ -81,11 +81,11 @@ class AvailabilityOut(BaseModel):
 
 class BookingCreate(BaseModel):
     availability_id: int
-    platform: constr(regex="^(Google Meet|VOOM)$")
+    platform: constr(regex="^(Google Meet|Zoom|VOOM)$")
 
 
 class BookingUpdate(BaseModel):
-    platform: Optional[constr(regex="^(Google Meet|VOOM)$")]
+    platform: Optional[constr(regex="^(Google Meet|Zoom|VOOM)$")]
     conference_link: Optional[str]
 
 
