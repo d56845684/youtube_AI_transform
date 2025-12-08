@@ -46,6 +46,8 @@ const adminResetAvailabilityBtn = document.getElementById("admin-reset-availabil
 const adminAvailabilityDate = document.getElementById("admin-availability-date");
 const adminAvailabilityStart = document.getElementById("admin-availability-start");
 const adminAvailabilityEnd = document.getElementById("admin-availability-end");
+const adminAvailabilityTeacherSelect = document.getElementById("admin-availability-teacher");
+const studentBookingsSection = document.getElementById("student-bookings-section");
 
 const translations = {
   zh: {
@@ -398,6 +400,8 @@ let adminTargetUser = null;
 let adminTargetBookings = [];
 let adminTargetAvailabilities = [];
 let adminSelectedSlot = null;
+let adminManagedAvailabilities = [];
+let adminManagedTeacherId = null;
 let adminTimelineSlots = [];
 
 function t(key, vars = {}) {
@@ -960,14 +964,24 @@ async function loadAdminUser(email) {
     adminTargetUser = data.user;
     adminTargetBookings = data.bookings || [];
     adminTargetAvailabilities = data.availabilities || [];
+    adminManagedTeacherId = adminTargetUser.role === "teacher" ? adminTargetUser.id : null;
+    adminManagedAvailabilities = adminManagedTeacherId ? adminTargetAvailabilities : [];
     adminSelectedSlot = null;
     renderAdminBookingTimeline([]);
+    if (adminManagedTeacherId && adminAvailabilityTeacherSelect) {
+      adminAvailabilityTeacherSelect.value = `${adminManagedTeacherId}`;
+    }
+    if (adminTeacherSelect && adminManagedTeacherId) {
+      adminTeacherSelect.value = `${adminManagedTeacherId}`;
+    }
     renderAdminUserData();
     setStatus(adminStatus, t("admin-search-success", { email: adminTargetUser.email, role: adminTargetUser.role }));
   } catch (error) {
     adminTargetUser = null;
     adminTargetBookings = [];
     adminTargetAvailabilities = [];
+    adminManagedAvailabilities = [];
+    adminManagedTeacherId = null;
     renderAdminUserData();
     setStatus(adminStatus, t("admin-search-failure", { message: error.message }), true);
   }
@@ -984,26 +998,25 @@ function renderAdminUserData() {
     adminStudentTools.hidden = !hasUser || adminTargetUser.role !== "student";
   }
   if (adminTeacherTools) {
-    adminTeacherTools.hidden = !hasUser || adminTargetUser.role !== "teacher";
+    adminTeacherTools.hidden = !isAdminUser();
   }
 
   if (!hasUser) {
     renderBookings(adminBookingTable, []);
-    renderAdminAvailabilities([]);
+    renderAdminAvailabilities(adminManagedAvailabilities);
     renderAdminBookingTimeline([]);
     return;
   }
 
   renderBookings(adminBookingTable, adminTargetBookings || []);
-  if (adminTargetUser.role === "teacher") {
-    renderAdminAvailabilities(adminTargetAvailabilities || []);
-  } else {
-    renderAdminAvailabilities([]);
-  }
+  renderAdminAvailabilities(adminManagedAvailabilities || []);
 }
 
 async function loadAdminTeacherAvailability() {
-  const teacherId = adminTeacherSelect?.value?.trim();
+  const teacherId =
+    adminTeacherSelect?.value?.trim() ||
+    adminAvailabilityTeacherSelect?.value?.trim() ||
+    (adminManagedTeacherId ? `${adminManagedTeacherId}` : "");
   if (!teacherId) {
     setStatus(adminStatus, t("admin-teacher-required"), true);
     return;
@@ -1011,10 +1024,18 @@ async function loadAdminTeacherAvailability() {
   try {
     const availability = await apiFetch(`/teachers/${teacherId}/availability`);
     renderAdminBookingTimeline(availability, true);
+    adminManagedTeacherId = Number(teacherId);
+    adminManagedAvailabilities = availability || [];
+    renderAdminAvailabilities(adminManagedAvailabilities);
+    if (adminAvailabilityTeacherSelect) {
+      adminAvailabilityTeacherSelect.value = teacherId;
+    }
     if (availability?.length) {
       setStatus(adminStatus, t("booking-loaded-slots", { teacher: teacherId, count: availability.length }));
     }
   } catch (error) {
+    adminManagedAvailabilities = [];
+    renderAdminAvailabilities(adminManagedAvailabilities);
     renderAdminBookingTimeline([]);
     setStatus(adminStatus, t("booking-load-error", { message: error.message }), true);
   }
@@ -1115,6 +1136,15 @@ function renderTeacherOptions(list) {
       adminTeacherSelect.value = adminSelected;
     }
   }
+  if (adminAvailabilityTeacherSelect) {
+    const adminTeacherSelected = adminAvailabilityTeacherSelect.value;
+    adminAvailabilityTeacherSelect.innerHTML =
+      `<option value="">${t("booking-teacher-placeholder")}</option>` +
+      list.map((teacher) => `<option value="${teacher.id}">${teacher.full_name}</option>`).join("");
+    if (adminTeacherSelected) {
+      adminAvailabilityTeacherSelect.value = adminTeacherSelected;
+    }
+  }
 }
 
 async function refreshTeacherDirectory(query = "") {
@@ -1172,7 +1202,10 @@ function updateRoleUI() {
   const isTeacher = currentUser?.role === "teacher";
   const adminMode = isAdminUser();
   if (studentOnlySections.length) {
-    studentOnlySections.forEach((section) => section.classList.toggle("hidden", isTeacher && !adminMode));
+    studentOnlySections.forEach((section) => {
+      const shouldHide = (isTeacher && !adminMode) || adminMode;
+      section.classList.toggle("hidden", shouldHide);
+    });
   }
   if (teacherTools) {
     teacherTools.classList.toggle("hidden", !isTeacher);
@@ -1186,6 +1219,9 @@ function updateRoleUI() {
   }
   if (adminConsole) {
     adminConsole.classList.toggle("hidden", !adminMode);
+  }
+  if (studentBookingsSection) {
+    studentBookingsSection.classList.toggle("hidden", adminMode);
   }
   if (!isTeacher) {
     renderTimeline(sampleAvailabilities, false, teacherAvailabilityList, false);
@@ -1467,7 +1503,7 @@ if (adminBookBtn) {
 if (adminAvailabilityForm) {
   adminAvailabilityForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!isAdminUser() || !adminTargetUser || adminTargetUser.role !== "teacher") {
+    if (!isAdminUser()) {
       setStatus(adminAvailabilityStatus, t("admin-availability-error", { message: "Unauthorized" }), true);
       return;
     }
@@ -1477,6 +1513,15 @@ if (adminAvailabilityForm) {
     const startTime = formData.get("startTime");
     const endTime = formData.get("endTime");
     const availabilityId = formData.get("availabilityId");
+    const selectedTeacherId =
+      adminAvailabilityTeacherSelect?.value?.trim() ||
+      (adminTargetUser?.role === "teacher" ? `${adminTargetUser.id}` : "") ||
+      (adminManagedTeacherId ? `${adminManagedTeacherId}` : "");
+
+    if (!selectedTeacherId) {
+      setStatus(adminAvailabilityStatus, t("admin-teacher-required"), true);
+      return;
+    }
     const payload = {
       availability_date: availabilityDate,
       start_time: startTime,
@@ -1494,7 +1539,7 @@ if (adminAvailabilityForm) {
         await apiFetch("/teachers/availability", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, teacher_id: adminTargetUser.id }),
+          body: JSON.stringify({ ...payload, teacher_id: selectedTeacherId }),
         });
       }
       setStatus(
@@ -1505,8 +1550,8 @@ if (adminAvailabilityForm) {
         }),
       );
       resetAdminAvailabilityForm();
-      if (adminTargetUser?.email) {
-        await loadAdminUser(adminTargetUser.email);
+      if (selectedTeacherId) {
+        await loadAdminTeacherAvailability();
       }
     } catch (error) {
       setStatus(adminAvailabilityStatus, t("admin-availability-error", { message: error.message }), true);

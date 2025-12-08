@@ -185,6 +185,12 @@
 
                 <div class="stacked" id="admin-teacher-tools" hidden>
                     <h4 data-i18n="admin-teacher-title">教師時段維護</h4>
+                    <div class="field-group inline-inputs">
+                        <label for="admin-availability-teacher" data-i18n="admin-teacher-label">選擇老師</label>
+                        <select id="admin-availability-teacher" name="teacherId">
+                            <option value="" data-i18n="booking-teacher-placeholder">選擇老師</option>
+                        </select>
+                    </div>
                     <form id="admin-availability-form" class="field-group three-column">
                         <input type="hidden" name="availabilityId" id="admin-availability-id">
                         <label for="admin-availability-date" data-i18n="teacher-date">日期</label>
@@ -220,7 +226,7 @@
                 </table>
             </section>
 
-            <section class="card student-only">
+            <section class="card student-only" id="student-bookings-section">
                 <div class="section-header">
                     <h3 data-i18n="bookings-title">我的預約</h3>
                     <span class="status-pill" id="booking-status" data-i18n="bookings-status">尚未登入，顯示示範資料</span>
