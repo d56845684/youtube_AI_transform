@@ -32,16 +32,6 @@ class TimestampMixin:
     deleted_at = Column(DateTime(timezone=True), nullable=True)
 
 
-class VideoProvider(TimestampMixin, Base):
-    __tablename__ = "video_providers"
-
-    id = Column(Integer, primary_key=True)
-    provider = Column(String, nullable=False, unique=True)
-    client_id = Column(String, nullable=False)
-    client_secret = Column(String, nullable=False)
-    account_id = Column(String, nullable=False)
-
-
 class UserRole(str, Enum):
     STUDENT = "student"
     TEACHER = "teacher"
@@ -131,8 +121,11 @@ class VideoProvider(TimestampMixin, Base):
         VOOV = "voov"
 
     id = Column(Integer, primary_key=True)
-    provider = Column(PgEnum(ProviderType, name="provider_type"), nullable=False)
-    account_label = Column(String, nullable=False, unique=True)
+    provider = Column(String, nullable=False, unique=True)
+    client_id = Column(String, nullable=False)
+    client_secret = Column(String, nullable=False)
+    account_id = Column(String, nullable=False)
+    account_label = Column(String, nullable=True, unique=True)
     access_key = Column(String, nullable=True)
     access_token = Column(String, nullable=True)
     refresh_token = Column(String, nullable=True)
