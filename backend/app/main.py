@@ -9,7 +9,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import auth, google_integration, models, schemas, zoom_integration
+from . import auth, google_integration, models, schemas, video_provider, zoom_integration
 from .database import Base, SessionLocal, engine, get_db
 from .logger import get_logger
 
@@ -693,11 +693,22 @@ async def book_availability(
 
         elif payload.platform in {"Zoom", "VOOM"}:
             try:
+                zoom_credentials = await video_provider.get_zoom_credentials(db)
+            except video_provider.VideoProviderError as exc:
+                await db.rollback()
+                logger.error("Zoom provider configuration missing: %s", exc)
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Zoom provider configuration is missing",
+                ) from exc
+
+            try:
                 zoom_meeting = await asyncio.to_thread(
                     zoom_integration.create_zoom_meeting,
                     start_time=start_dt,
                     duration_minutes=duration_minutes,
                     topic=f"Lesson: {current_user.full_name} ↔ {teacher.full_name}",
+                    credentials=zoom_credentials,
                 )
             except zoom_integration.ZoomIntegrationError as exc:
                 await db.rollback()
@@ -988,6 +999,15 @@ async def upload_zoom_recording(
     if not meeting_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Meeting ID is required")
 
+    try:
+        zoom_credentials = await video_provider.get_zoom_credentials(db)
+    except video_provider.VideoProviderError as exc:
+        logger.error("Zoom provider configuration missing: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Zoom provider configuration is missing",
+        ) from exc
+
     if zoom_record is None:
         zoom_record = models.ZoomRecording(
             booking_id=booking.id,
@@ -1000,7 +1020,9 @@ async def upload_zoom_recording(
 
     try:
         recording = await asyncio.to_thread(
-            zoom_integration.download_meeting_recording, meeting_id
+            zoom_integration.download_meeting_recording,
+            meeting_id,
+            credentials=zoom_credentials,
         )
     except zoom_integration.ZoomIntegrationError as exc:
         logger.error("Failed to fetch Zoom recording for meeting %s: %s", meeting_id, exc)
@@ -1030,7 +1052,11 @@ async def upload_zoom_recording(
         ) from exc
 
     try:
-        await asyncio.to_thread(zoom_integration.delete_meeting_recordings, meeting_id)
+        await asyncio.to_thread(
+            zoom_integration.delete_meeting_recordings,
+            meeting_id,
+            credentials=zoom_credentials,
+        )
     except zoom_integration.ZoomIntegrationError as exc:
         logger.error("Failed to delete Zoom recordings for meeting %s: %s", meeting_id, exc)
         raise HTTPException(
