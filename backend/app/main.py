@@ -441,8 +441,12 @@ async def create_availability(
     )
     db.add(availability)
     await db.commit()
-    await db.refresh(availability)
-    return availability
+    result = await db.execute(
+        select(models.TeacherAvailability)
+        .options(selectinload(models.TeacherAvailability.teacher))
+        .where(models.TeacherAvailability.id == availability.id)
+    )
+    return result.scalar_one()
 
 
 @app.get(
