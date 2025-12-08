@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from sqlalchemy import (
+    Boolean,
     Column,
     Date,
     DateTime,
@@ -111,6 +112,25 @@ class LessonBooking(TimestampMixin, Base):
     )
 
 
+class VideoProvider(TimestampMixin, Base):
+    __tablename__ = "video_providers"
+
+    class ProviderType(str, Enum):
+        ZOOM = "zoom"
+        GOOGLE_MEET = "google_meet"
+        VOOV = "voov"
+
+    id = Column(Integer, primary_key=True)
+    provider = Column(PgEnum(ProviderType, name="provider_type"), nullable=False)
+    account_label = Column(String, nullable=False, unique=True)
+    access_key = Column(String, nullable=True)
+    access_token = Column(String, nullable=True)
+    refresh_token = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    classrooms = relationship("Classroom", back_populates="provider", cascade="all, delete")
+
+
 class MeetingRecord(TimestampMixin, Base):
     __tablename__ = "meeting_records"
 
@@ -129,6 +149,25 @@ class MeetingRecord(TimestampMixin, Base):
 
     booking = relationship("LessonBooking")
     reserved_by = relationship("User")
+
+
+class Classroom(TimestampMixin, Base):
+    __tablename__ = "classrooms"
+
+    id = Column(Integer, primary_key=True)
+    provider_id = Column(
+        Integer, ForeignKey("video_providers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    booking_id = Column(
+        Integer, ForeignKey("lesson_bookings.id", ondelete="SET NULL"), nullable=True, unique=True
+    )
+    start_at = Column(DateTime(timezone=True), nullable=False)
+    end_at = Column(DateTime(timezone=True), nullable=False)
+    meeting_link = Column(String, nullable=True)
+    status_desc = Column(String, nullable=True)
+
+    provider = relationship("VideoProvider", back_populates="classrooms")
+    booking = relationship("LessonBooking")
 
 
 class GoogleCalendarEvent(TimestampMixin, Base):
