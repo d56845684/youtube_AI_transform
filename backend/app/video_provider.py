@@ -17,7 +17,10 @@ class VideoProviderError(Exception):
 
 async def _get_zoom_provider(db: AsyncSession) -> models.VideoProvider:
     result = await db.execute(
-        select(models.VideoProvider).where(models.VideoProvider.provider.ilike("zoom"))
+        select(models.VideoProvider).where(
+            models.VideoProvider.provider.ilike("zoom"),
+            models.VideoProvider.deleted_at.is_(None),
+        )
     )
     provider = result.scalar_one_or_none()
     if provider is None:
