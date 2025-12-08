@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import models
 from .logger import get_logger
+from .crypto_utils import decrypt_value, EncryptionError
 
 logger = get_logger(__name__)
 
@@ -40,8 +41,11 @@ async def get_zoom_credentials(db: AsyncSession) -> dict:
         missing_str = ", ".join(missing_fields)
         raise VideoProviderError(f"Zoom provider missing required fields: {missing_str}")
 
-    return {
-        "client_id": provider.client_id,
-        "client_secret": provider.client_secret,
-        "account_id": provider.account_id,
-    }
+    try:
+        return {
+            "client_id": decrypt_value(provider.client_id),
+            "client_secret": decrypt_value(provider.client_secret),
+            "account_id": decrypt_value(provider.account_id),
+        }
+    except EncryptionError as exc:
+        raise VideoProviderError("Zoom provider credentials could not be decrypted") from exc

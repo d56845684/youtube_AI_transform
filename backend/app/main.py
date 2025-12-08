@@ -10,12 +10,36 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import auth, google_integration, models, schemas, video_provider, zoom_integration
+from .crypto_utils import decrypt_value, encrypt_value, EncryptionError
 from .database import Base, SessionLocal, engine, get_db
 from .logger import get_logger
 
 app = FastAPI(title="Language Tutor Marketplace")
 
 logger = get_logger(__name__)
+
+
+def serialize_video_provider(provider: models.VideoProvider) -> schemas.VideoProviderOut:
+    return schemas.VideoProviderOut(
+        id=provider.id,
+        provider=provider.provider,
+        client_id=decrypt_value(provider.client_id) or "",
+        client_secret=decrypt_value(provider.client_secret) or "",
+        account_id=decrypt_value(provider.account_id) or "",
+        created_at=provider.created_at,
+        updated_at=provider.updated_at,
+        deleted_at=provider.deleted_at,
+    )
+
+
+def serialize_video_provider_safe(provider: models.VideoProvider) -> schemas.VideoProviderOut:
+    try:
+        return serialize_video_provider(provider)
+    except EncryptionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to decrypt video provider credentials",
+        ) from exc
 
 
 def normalize_to_utc_plus_8(moment: datetime) -> datetime:
@@ -276,7 +300,7 @@ async def list_video_providers(
     result = await db.execute(
         select(models.VideoProvider).where(models.VideoProvider.deleted_at.is_(None))
     )
-    return result.scalars().all()
+    return [serialize_video_provider_safe(provider) for provider in result.scalars().all()]
 
 
 @app.post("/video-providers", response_model=schemas.VideoProviderOut, tags=["Video Providers"])
@@ -298,14 +322,14 @@ async def create_video_provider(
 
     provider = models.VideoProvider(
         provider=payload.provider,
-        client_id=payload.client_id,
-        client_secret=payload.client_secret,
-        account_id=payload.account_id,
+        client_id=encrypt_value(payload.client_id) or "",
+        client_secret=encrypt_value(payload.client_secret) or "",
+        account_id=encrypt_value(payload.account_id) or "",
     )
     db.add(provider)
     await db.commit()
     await db.refresh(provider)
-    return provider
+    return serialize_video_provider_safe(provider)
 
 
 @app.get(
@@ -318,7 +342,7 @@ async def get_video_provider(
 ):
     ensure_superuser(current_user)
     provider = await get_video_provider_or_404(provider_id, db)
-    return provider
+    return serialize_video_provider_safe(provider)
 
 
 @app.put(
@@ -348,15 +372,15 @@ async def update_video_provider(
         provider.provider = payload.provider
 
     if payload.client_id is not None:
-        provider.client_id = payload.client_id
+        provider.client_id = encrypt_value(payload.client_id) or ""
     if payload.client_secret is not None:
-        provider.client_secret = payload.client_secret
+        provider.client_secret = encrypt_value(payload.client_secret) or ""
     if payload.account_id is not None:
-        provider.account_id = payload.account_id
+        provider.account_id = encrypt_value(payload.account_id) or ""
 
     await db.commit()
     await db.refresh(provider)
-    return provider
+    return serialize_video_provider(provider)
 
 
 @app.delete(
