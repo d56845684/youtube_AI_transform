@@ -1,5 +1,4 @@
 import base64
-import os
 from datetime import datetime, timezone
 from urllib.parse import quote
 
@@ -15,19 +14,25 @@ class ZoomIntegrationError(Exception):
     """Raised when Zoom API interactions fail or are misconfigured."""
 
 
-def _get_env_setting(key: str) -> str:
-    value = os.getenv(key)
-    if not value:
-        raise ZoomIntegrationError(f"Missing Zoom configuration: {key}")
-    return value
-
-
-def _get_zoom_access_token() -> str:
+def _get_zoom_access_token(credentials: dict) -> str:
     """Exchange a Server-to-Server OAuth access token."""
 
-    client_id = _get_env_setting("ZOOM_CLIENT_ID")
-    client_secret = _get_env_setting("ZOOM_CLIENT_SECRET")
-    account_id = _get_env_setting("ZOOM_ACCOUNT_ID")
+    client_id = credentials.get("client_id")
+    client_secret = credentials.get("client_secret")
+    account_id = credentials.get("account_id")
+
+    missing_fields = [
+        field
+        for field, value in (
+            ("client_id", client_id),
+            ("client_secret", client_secret),
+            ("account_id", account_id),
+        )
+        if not value
+    ]
+    if missing_fields:
+        missing_str = ", ".join(missing_fields)
+        raise ZoomIntegrationError(f"Zoom credentials are missing required fields: {missing_str}")
 
     auth_str = f"{client_id}:{client_secret}"
     b64_auth = base64.b64encode(auth_str.encode()).decode()
@@ -57,10 +62,10 @@ def _pick_recording_file(recording_files: list[dict]) -> dict | None:
     return recording_files[0] if recording_files else None
 
 
-def download_meeting_recording(meeting_id: str) -> dict:
+def download_meeting_recording(meeting_id: str, *, credentials: dict) -> dict:
     """Download the primary Zoom cloud recording for a meeting."""
 
-    access_token = _get_zoom_access_token()
+    access_token = _get_zoom_access_token(credentials)
     encoded_meeting_id = quote(meeting_id, safe="")
     url = f"https://api.zoom.us/v2/meetings/{encoded_meeting_id}/recordings"
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -100,10 +105,10 @@ def download_meeting_recording(meeting_id: str) -> dict:
     }
 
 
-def delete_meeting_recordings(meeting_id: str) -> None:
+def delete_meeting_recordings(meeting_id: str, *, credentials: dict) -> None:
     """Delete all Zoom cloud recordings for the given meeting ID."""
 
-    access_token = _get_zoom_access_token()
+    access_token = _get_zoom_access_token(credentials)
     encoded_meeting_id = quote(meeting_id, safe="")
     url = f"https://api.zoom.us/v2/meetings/{encoded_meeting_id}/recordings"
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -122,10 +127,11 @@ def create_zoom_meeting(
     duration_minutes: int,
     topic: str | None = None,
     user_id: str = "me",
+    credentials: dict,
 ) -> dict:
     """Create a Zoom meeting and return key details."""
 
-    access_token = _get_zoom_access_token()
+    access_token = _get_zoom_access_token(credentials)
     start_time_utc = start_time.astimezone(timezone.utc)
 
     url = f"https://api.zoom.us/v2/users/{user_id}/meetings"

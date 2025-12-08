@@ -32,6 +32,16 @@ class TimestampMixin:
     deleted_at = Column(DateTime(timezone=True), nullable=True)
 
 
+class VideoProvider(TimestampMixin, Base):
+    __tablename__ = "video_providers"
+
+    id = Column(Integer, primary_key=True)
+    provider = Column(String, nullable=False, unique=True)
+    client_id = Column(String, nullable=False)
+    client_secret = Column(String, nullable=False)
+    account_id = Column(String, nullable=False)
+
+
 class UserRole(str, Enum):
     STUDENT = "student"
     TEACHER = "teacher"

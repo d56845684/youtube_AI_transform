@@ -50,6 +50,34 @@ class TokenData(BaseModel):
     role: UserRole
 
 
+class VideoProviderCreate(BaseModel):
+    provider: constr(min_length=1)
+    client_id: constr(min_length=1)
+    client_secret: constr(min_length=1)
+    account_id: constr(min_length=1)
+
+
+class VideoProviderUpdate(BaseModel):
+    provider: Optional[constr(min_length=1)] = None
+    client_id: Optional[constr(min_length=1)] = None
+    client_secret: Optional[constr(min_length=1)] = None
+    account_id: Optional[constr(min_length=1)] = None
+
+
+class VideoProviderOut(BaseModel):
+    id: int
+    provider: str
+    client_id: str
+    client_secret: str
+    account_id: str
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: Optional[datetime]
+
+    class Config:
+        orm_mode = True
+
+
 class AvailabilityCreate(BaseModel):
     availability_date: date
     start_time: time

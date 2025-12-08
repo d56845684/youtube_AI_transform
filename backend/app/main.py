@@ -9,13 +9,37 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import auth, google_integration, models, schemas, zoom_integration
+from . import auth, google_integration, models, schemas, video_provider, zoom_integration
+from .crypto_utils import decrypt_value, encrypt_value, EncryptionError
 from .database import Base, SessionLocal, engine, get_db
 from .logger import get_logger
 
 app = FastAPI(title="Language Tutor Marketplace")
 
 logger = get_logger(__name__)
+
+
+def serialize_video_provider(provider: models.VideoProvider) -> schemas.VideoProviderOut:
+    return schemas.VideoProviderOut(
+        id=provider.id,
+        provider=provider.provider,
+        client_id=decrypt_value(provider.client_id) or "",
+        client_secret=decrypt_value(provider.client_secret) or "",
+        account_id=decrypt_value(provider.account_id) or "",
+        created_at=provider.created_at,
+        updated_at=provider.updated_at,
+        deleted_at=provider.deleted_at,
+    )
+
+
+def serialize_video_provider_safe(provider: models.VideoProvider) -> schemas.VideoProviderOut:
+    try:
+        return serialize_video_provider(provider)
+    except EncryptionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to decrypt video provider credentials",
+        ) from exc
 
 
 def normalize_to_utc_plus_8(moment: datetime) -> datetime:
@@ -103,6 +127,19 @@ def ensure_student(user: models.User) -> None:
 def ensure_superuser(user: models.User) -> None:
     if user.role not in {models.UserRole.ADMIN, models.UserRole.SUPERUSER}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superuser role required")
+
+
+async def get_video_provider_or_404(provider_id: int, db: AsyncSession) -> models.VideoProvider:
+    result = await db.execute(
+        select(models.VideoProvider).where(
+            models.VideoProvider.id == provider_id,
+            models.VideoProvider.deleted_at.is_(None),
+        )
+    )
+    provider = result.scalar_one_or_none()
+    if provider is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video provider not found")
+    return provider
 
 
 def derive_weekday_name(avail_date: date) -> str:
@@ -284,6 +321,112 @@ async def login(
 
     access_token = auth.create_access_token({"sub": str(user.id), "role": user.role.value})
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.get("/video-providers", response_model=list[schemas.VideoProviderOut], tags=["Video Providers"])
+async def list_video_providers(
+    current_user: models.User = Depends(auth.get_current_user), db: AsyncSession = Depends(get_db)
+):
+    ensure_superuser(current_user)
+    result = await db.execute(
+        select(models.VideoProvider).where(models.VideoProvider.deleted_at.is_(None))
+    )
+    return [serialize_video_provider_safe(provider) for provider in result.scalars().all()]
+
+
+@app.post("/video-providers", response_model=schemas.VideoProviderOut, tags=["Video Providers"])
+async def create_video_provider(
+    payload: schemas.VideoProviderCreate,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    ensure_superuser(current_user)
+
+    result = await db.execute(
+        select(models.VideoProvider).where(
+            models.VideoProvider.provider == payload.provider,
+            models.VideoProvider.deleted_at.is_(None),
+        )
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provider already exists")
+
+    provider = models.VideoProvider(
+        provider=payload.provider,
+        client_id=encrypt_value(payload.client_id) or "",
+        client_secret=encrypt_value(payload.client_secret) or "",
+        account_id=encrypt_value(payload.account_id) or "",
+    )
+    db.add(provider)
+    await db.commit()
+    await db.refresh(provider)
+    return serialize_video_provider_safe(provider)
+
+
+@app.get(
+    "/video-providers/{provider_id}", response_model=schemas.VideoProviderOut, tags=["Video Providers"]
+)
+async def get_video_provider(
+    provider_id: int,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    ensure_superuser(current_user)
+    provider = await get_video_provider_or_404(provider_id, db)
+    return serialize_video_provider_safe(provider)
+
+
+@app.put(
+    "/video-providers/{provider_id}", response_model=schemas.VideoProviderOut, tags=["Video Providers"]
+)
+async def update_video_provider(
+    provider_id: int,
+    payload: schemas.VideoProviderUpdate,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    ensure_superuser(current_user)
+    provider = await get_video_provider_or_404(provider_id, db)
+
+    if payload.provider and payload.provider != provider.provider:
+        result = await db.execute(
+            select(models.VideoProvider).where(
+                models.VideoProvider.provider == payload.provider,
+                models.VideoProvider.deleted_at.is_(None),
+                models.VideoProvider.id != provider.id,
+            )
+        )
+        if result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Provider name already in use"
+            )
+        provider.provider = payload.provider
+
+    if payload.client_id is not None:
+        provider.client_id = encrypt_value(payload.client_id) or ""
+    if payload.client_secret is not None:
+        provider.client_secret = encrypt_value(payload.client_secret) or ""
+    if payload.account_id is not None:
+        provider.account_id = encrypt_value(payload.account_id) or ""
+
+    await db.commit()
+    await db.refresh(provider)
+    return serialize_video_provider(provider)
+
+
+@app.delete(
+    "/video-providers/{provider_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Video Providers"]
+)
+async def delete_video_provider(
+    provider_id: int,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    ensure_superuser(current_user)
+    provider = await get_video_provider_or_404(provider_id, db)
+    provider.deleted_at = models.now_in_utc_plus_8()
+    await db.commit()
+    return None
 
 
 @app.get("/users/me", response_model=schemas.UserOut, tags=["Users"])
@@ -745,11 +888,22 @@ async def book_availability(
 
         elif payload.platform in {"Zoom", "VOOM"}:
             try:
+                zoom_credentials = await video_provider.get_zoom_credentials(db)
+            except video_provider.VideoProviderError as exc:
+                await db.rollback()
+                logger.error("Zoom provider configuration missing: %s", exc)
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Zoom provider configuration is missing",
+                ) from exc
+
+            try:
                 zoom_meeting = await asyncio.to_thread(
                     zoom_integration.create_zoom_meeting,
                     start_time=start_dt,
                     duration_minutes=duration_minutes,
                     topic=f"Lesson: {current_user.full_name} ↔ {teacher.full_name}",
+                    credentials=zoom_credentials,
                 )
             except zoom_integration.ZoomIntegrationError as exc:
                 await db.rollback()
@@ -1059,6 +1213,15 @@ async def upload_zoom_recording(
     if not meeting_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Meeting ID is required")
 
+    try:
+        zoom_credentials = await video_provider.get_zoom_credentials(db)
+    except video_provider.VideoProviderError as exc:
+        logger.error("Zoom provider configuration missing: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Zoom provider configuration is missing",
+        ) from exc
+
     if zoom_record is None:
         zoom_record = models.ZoomRecording(
             booking_id=booking.id,
@@ -1071,7 +1234,9 @@ async def upload_zoom_recording(
 
     try:
         recording = await asyncio.to_thread(
-            zoom_integration.download_meeting_recording, meeting_id
+            zoom_integration.download_meeting_recording,
+            meeting_id,
+            credentials=zoom_credentials,
         )
     except zoom_integration.ZoomIntegrationError as exc:
         logger.error("Failed to fetch Zoom recording for meeting %s: %s", meeting_id, exc)
@@ -1101,7 +1266,11 @@ async def upload_zoom_recording(
         ) from exc
 
     try:
-        await asyncio.to_thread(zoom_integration.delete_meeting_recordings, meeting_id)
+        await asyncio.to_thread(
+            zoom_integration.delete_meeting_recordings,
+            meeting_id,
+            credentials=zoom_credentials,
+        )
     except zoom_integration.ZoomIntegrationError as exc:
         logger.error("Failed to delete Zoom recordings for meeting %s: %s", meeting_id, exc)
         raise HTTPException(

@@ -29,6 +29,9 @@ Set environment variables (or copy `.env.example`):
 - `GOOGLE_SHEETS_WORKSHEET`: worksheet/tab name to target; defaults to the first worksheet
 - `GOOGLE_CALENDAR_ID`: calendar to receive auto-created lesson events
 
+Zoom credentials are loaded from the `video_providers` table (provider value `zoom`) with
+`client_id`, `client_secret`, and `account_id` columns populated.
+
 ## API highlights
 - `POST /auth/register`: create user (role `student` or `teacher`).
 - `POST /auth/token`: OAuth2 password flow for JWT.
