@@ -153,6 +153,73 @@
                 </table>
             </section>
 
+            <section class="card admin-only hidden" id="admin-console">
+                <div class="section-header">
+                    <h3 data-i18n="admin-console-title">管理員控制台</h3>
+                    <span class="status-pill" id="admin-status" data-i18n="admin-console-description">輸入 Email 以查詢任一使用者</span>
+                </div>
+                <form id="admin-search-form" class="field-group inline-inputs">
+                    <label for="admin-email" data-i18n="admin-search-label">使用者 Email</label>
+                    <input id="admin-email" name="email" type="email" required placeholder="user@example.com" data-i18n-placeholder="admin-search-placeholder">
+                    <button type="submit" data-i18n="admin-search-button">查詢</button>
+                </form>
+
+                <div id="admin-user-summary" class="muted"></div>
+
+                <div class="stacked" id="admin-student-tools" hidden>
+                    <h4 data-i18n="admin-student-title">為學生預約</h4>
+                    <div class="field-group inline-inputs">
+                        <label for="admin-teacher-select" data-i18n="admin-teacher-label">選擇老師</label>
+                        <select id="admin-teacher-select" name="teacherId">
+                            <option value="" data-i18n="booking-teacher-placeholder">選擇老師</option>
+                        </select>
+                        <button type="button" id="admin-load-availability" data-i18n="booking-load-button">載入時段</button>
+                        <select id="admin-platform" name="platform">
+                            <option value="Google Meet">Google Meet</option>
+                            <option value="Zoom">Zoom</option>
+                        </select>
+                        <button type="button" id="admin-book" data-i18n="admin-book">代為預約</button>
+                    </div>
+                    <div class="timeline" id="admin-booking-timeline"></div>
+                </div>
+
+                <div class="stacked" id="admin-teacher-tools" hidden>
+                    <h4 data-i18n="admin-teacher-title">教師時段維護</h4>
+                    <form id="admin-availability-form" class="field-group three-column">
+                        <input type="hidden" name="availabilityId" id="admin-availability-id">
+                        <label for="admin-availability-date" data-i18n="teacher-date">日期</label>
+                        <input id="admin-availability-date" type="date" name="availabilityDate" required>
+                        <label for="admin-availability-start" data-i18n="teacher-start">開始時間</label>
+                        <input id="admin-availability-start" type="time" name="startTime" required>
+                        <label for="admin-availability-end" data-i18n="teacher-end">結束時間</label>
+                        <input id="admin-availability-end" type="time" name="endTime" required>
+                        <button type="submit" data-i18n="admin-availability-submit">新增 / 更新時段</button>
+                        <button type="button" id="admin-reset-availability" class="ghost" data-i18n="admin-availability-reset">重設</button>
+                        <div class="status-line" id="admin-availability-status" aria-live="polite"></div>
+                    </form>
+                    <div class="timeline" id="admin-availability-list"></div>
+                </div>
+
+                <div class="section-header">
+                    <h4 data-i18n="admin-bookings-title">使用者預約紀錄</h4>
+                </div>
+                <table class="table-preview" id="admin-booking-table">
+                    <thead>
+                        <tr>
+                            <th data-i18n="table-student">學生</th>
+                            <th data-i18n="table-teacher">老師</th>
+                            <th data-i18n="table-time">時間</th>
+                            <th data-i18n="table-platform">平台</th>
+                            <th data-i18n="table-status">狀態</th>
+                            <th data-i18n="table-reason">原因</th>
+                            <th data-i18n="table-link">連結</th>
+                            <th data-i18n="table-recording">錄影</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </section>
+
             <section class="card student-only">
                 <div class="section-header">
                     <h3 data-i18n="bookings-title">我的預約</h3>

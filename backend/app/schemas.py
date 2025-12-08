@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr, constr
 class UserRole(str, Enum):
     student = "student"
     teacher = "teacher"
+    admin = "admin"
     superuser = "superuser"
 
 
@@ -53,6 +54,7 @@ class AvailabilityCreate(BaseModel):
     availability_date: date
     start_time: time
     end_time: time
+    teacher_id: Optional[int] = None
 
 
 class AvailabilityUpdate(BaseModel):
@@ -82,6 +84,7 @@ class AvailabilityOut(BaseModel):
 class BookingCreate(BaseModel):
     availability_id: int
     platform: constr(regex="^(Google Meet|Zoom|VOOM)$")
+    student_id: Optional[int] = None
 
 
 class BookingUpdate(BaseModel):
@@ -110,6 +113,15 @@ class BookingOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     deleted_at: Optional[datetime]
+
+    class Config:
+        orm_mode = True
+
+
+class AdminUserLookup(BaseModel):
+    user: UserOut
+    bookings: list[BookingOut]
+    availabilities: Optional[list[AvailabilityOut]] = None
 
     class Config:
         orm_mode = True
