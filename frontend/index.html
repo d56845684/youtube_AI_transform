@@ -11,26 +11,29 @@
         <div class="container hero">
             <div>
                 <div class="badges">
-                    <span class="badge">學生登入 / 註冊</span>
-                    <span class="badge">JWT 驗證</span>
-                    <span class="badge">立即預約</span>
+                    <span class="badge" data-i18n="badges-auth">學生登入 / 註冊</span>
+                    <span class="badge" data-i18n="badges-jwt">JWT 驗證</span>
+                    <span class="badge" data-i18n="badges-booking">立即預約</span>
                 </div>
-                <h1>線上家教預約中心</h1>
-                <p>學生登入或註冊後，即可查看老師可預約時段，點擊選擇並送出課程預約，同時在同一頁面檢視自己的預約清單。</p>
-                <p class="footer-note">若未啟動後端，畫面會顯示示範資料，方便快速瀏覽流程。</p>
+                <h1 data-i18n="hero-title">線上家教預約中心</h1>
+                <p data-i18n="hero-description">學生登入或註冊後，即可查看老師可預約時段，點擊選擇並送出課程預約，同時在同一頁面檢視自己的預約清單。</p>
+                <p class="footer-note" data-i18n="hero-note">若未啟動後端，畫面會顯示示範資料，方便快速瀏覽流程。</p>
             </div>
             <div class="card mini-card">
-                <h3>使用步驟</h3>
+                <h3 data-i18n="steps-title">使用步驟</h3>
                 <ol class="step-list">
-                    <li>註冊並登入取得 Token。</li>
-                    <li>自動切換到「預約介面」。</li>
-                    <li>點選老師時段，確認後送出預約。</li>
+                    <li data-i18n="steps-item1">註冊並登入取得 Token。</li>
+                    <li data-i18n="steps-item2">自動切換到「預約介面」。</li>
+                    <li data-i18n="steps-item3">點選老師時段，確認後送出預約。</li>
                 </ol>
             </div>
         </div>
         <nav class="nav-tabs container" aria-label="page tabs">
-            <button class="tab active" data-nav="auth">登入 / 註冊</button>
-            <button class="tab" data-nav="booking">預約介面</button>
+            <div class="nav-left">
+                <button class="tab active" data-nav="auth" data-i18n="nav-auth">登入 / 註冊</button>
+                <button class="tab" data-nav="booking" data-i18n="nav-booking">預約介面</button>
+            </div>
+            <button class="language-toggle" id="language-toggle" type="button" data-i18n="language-toggle">English</button>
         </nav>
     </header>
 
@@ -38,31 +41,31 @@
         <section class="page active" data-page="auth">
             <div class="card-grid two-column">
                 <article class="card">
-                    <h2>登入</h2>
-                    <p>輸入帳密後即可取得 JWT Token，頁面會自動切換到預約介面。</p>
+                    <h2 data-i18n="login-title">登入</h2>
+                    <p data-i18n="login-description">輸入帳密後即可取得 JWT Token，頁面會自動切換到預約介面。</p>
                     <form id="login-form" class="field-group">
-                        <input type="email" name="email" placeholder="Email" required>
-                        <input type="password" name="password" placeholder="密碼" required>
+                        <input type="email" name="email" placeholder="Email" required data-i18n-placeholder="login-email">
+                        <input type="password" name="password" placeholder="密碼" required data-i18n-placeholder="login-password">
                         <select name="role">
-                            <option value="student">學生</option>
-                            <option value="teacher">教師</option>
+                            <option value="student" data-i18n="role-student">學生</option>
+                            <option value="teacher" data-i18n="role-teacher">教師</option>
                         </select>
-                        <button type="submit">登入並取得 Token</button>
+                        <button type="submit" data-i18n="login-submit">登入並取得 Token</button>
                         <div id="login-status" class="status-line" aria-live="polite"></div>
                     </form>
                 </article>
                 <article class="card">
-                    <h2>註冊</h2>
-                    <p>建立學生帳號，立即登入並查看老師空檔。</p>
+                    <h2 data-i18n="register-title">註冊</h2>
+                    <p data-i18n="register-description">建立學生帳號，立即登入並查看老師空檔。</p>
                     <form id="register-form" class="field-group">
-                        <input type="text" name="fullName" placeholder="姓名" required>
-                        <input type="email" name="email" placeholder="Email" required>
-                        <input type="password" name="password" placeholder="密碼" required>
+                        <input type="text" name="fullName" placeholder="姓名" required data-i18n-placeholder="register-name">
+                        <input type="email" name="email" placeholder="Email" required data-i18n-placeholder="register-email">
+                        <input type="password" name="password" placeholder="密碼" required data-i18n-placeholder="register-password">
                         <select name="role">
-                            <option value="student">學生</option>
-                            <option value="teacher">教師</option>
+                            <option value="student" data-i18n="role-student">學生</option>
+                            <option value="teacher" data-i18n="role-teacher">教師</option>
                         </select>
-                        <button type="submit">建立新帳號</button>
+                        <button type="submit" data-i18n="register-submit">建立新帳號</button>
                         <div id="register-status" class="status-line" aria-live="polite"></div>
                     </form>
                 </article>
@@ -73,35 +76,32 @@
             <div class="card-grid two-column top-align">
                 <article class="card student-only">
                     <div class="section-header">
-                        <h2>選擇可預約時段</h2>
-                        <span class="status-pill" id="timeline-status">請輸入教師 ID 或使用示範資料</span>
+                        <h2 data-i18n="booking-select-title">選擇可預約時段</h2>
+                        <span class="status-pill" id="timeline-status" data-i18n="booking-status-placeholder">請選擇老師或使用示範資料</span>
                     </div>
-                    <p>系統會依據教師 ID 呼叫 <code>/teachers/{id}/availability</code>，成功登入後會帶入 Token。</p>
                     <div class="field-group inline-inputs">
-                        <label for="teacher-name-input">老師姓名</label>
+                        <label for="teacher-name-input" data-i18n="booking-teacher-label">老師</label>
                         <select id="teacher-name-input" name="teacherName">
-                            <option value="">選擇老師（自動帶入 ID）</option>
+                            <option value="" data-i18n="booking-teacher-placeholder">選擇老師</option>
                         </select>
-                        <input type="number" id="teacher-id-input" name="teacherId" placeholder="或直接輸入 ID，如 18">
-                        <button type="button" id="load-availability">載入時段</button>
+                        <button type="button" id="load-availability" data-i18n="booking-load-button">載入時段</button>
                     </div>
                     <div class="timeline" id="timeline"></div>
                 </article>
                 <article class="card sticky-card student-only">
-                    <h2>預約確認</h2>
-                    <p>點選左側任一時間後，會自動帶入預約表單。送出時會附帶登入 Token。</p>
-                    <div class="selected-slot" id="selected-slot">尚未選取時段</div>
+                    <h2 data-i18n="booking-confirm-title">預約確認</h2>
+                    <p data-i18n="booking-confirm-description">點選左側任一時間後，會自動帶入預約表單。送出時會附帶登入 Token。</p>
+                    <div class="selected-slot" id="selected-slot" data-i18n="booking-empty-slot">尚未選取時段</div>
                     <form id="booking-form" class="field-group">
-                        <label>Availability ID</label>
-                        <input type="number" name="availabilityId" placeholder="點擊左側時段會自動填入" required readonly>
-                        <label>平台</label>
+                        <input type="hidden" name="availabilityId" required>
+                        <label data-i18n="booking-platform-label">平台</label>
                         <select name="platform" id="platform">
-                            <option>Google Meet</option>
                             <option>Zoom</option>
+                            <option>Google Meet</option>
                         </select>
-                        <label>主題（選填）</label>
-                        <input type="text" name="topic" placeholder="如：口說練習"> 
-                        <button type="submit">送出預約</button>
+                        <label data-i18n="booking-topic-label">主題（選填）</label>
+                        <input type="text" name="topic" placeholder="如：口說練習" data-i18n-placeholder="booking-topic-placeholder">
+                        <button type="submit" data-i18n="booking-submit">送出預約</button>
                         <div id="link-preview" aria-live="polite"></div>
                     </form>
                 </article>
@@ -109,44 +109,44 @@
 
             <section class="card teacher-only hidden" id="teacher-tools">
                 <div class="section-header">
-                    <h3>教師時段管理</h3>
-                    <span class="status-pill" id="teacher-tools-status">需以教師身分登入</span>
+                    <h3 data-i18n="teacher-tools-title">教師時段管理</h3>
+                    <span class="status-pill" id="teacher-tools-status" data-i18n="teacher-tools-status">需以教師身分登入</span>
                 </div>
-                <p>教師登入後可新增可預約時段，並查看自己目前的課程預約／會議資訊。</p>
+                <p data-i18n="teacher-tools-description">教師登入後可新增可預約時段，並查看自己目前的課程預約／會議資訊。</p>
                 <form id="teacher-availability-form" class="field-group three-column">
-                    <label for="teacher-date">日期</label>
+                    <label for="teacher-date" data-i18n="teacher-date">日期</label>
                     <input id="teacher-date" type="date" name="availabilityDate" required>
-                    <label for="teacher-weekday">系統判定星期</label>
+                    <label for="teacher-weekday" data-i18n="teacher-weekday">系統判定星期</label>
                     <input id="teacher-weekday" type="text" name="weekday" readonly value="-">
-                    <label for="teacher-start">開始時間</label>
+                    <label for="teacher-start" data-i18n="teacher-start">開始時間</label>
                     <input id="teacher-start" type="time" name="startTime" required>
-                    <label for="teacher-end">結束時間</label>
+                    <label for="teacher-end" data-i18n="teacher-end">結束時間</label>
                     <input id="teacher-end" type="time" name="endTime" required>
-                    <button type="submit">新增可預約時段</button>
+                    <button type="submit" data-i18n="teacher-add">新增可預約時段</button>
                     <div class="status-line" id="teacher-availability-status" aria-live="polite"></div>
                 </form>
 
                 <div class="section-header">
-                    <h4>我的可預約時段</h4>
-                    <span class="status-pill" id="teacher-availability-label">尚未載入</span>
+                    <h4 data-i18n="teacher-availability-title">我的可預約時段</h4>
+                    <span class="status-pill" id="teacher-availability-label" data-i18n="teacher-availability-label">尚未載入</span>
                 </div>
                 <div class="timeline" id="teacher-availability-list"></div>
 
                 <div class="section-header">
-                    <h4>教師課程 / 會議</h4>
-                    <span class="status-pill" id="teacher-booking-status">需以教師身分登入</span>
+                    <h4 data-i18n="teacher-bookings-title">教師課程 / 會議</h4>
+                    <span class="status-pill" id="teacher-booking-status" data-i18n="teacher-booking-status">需以教師身分登入</span>
                 </div>
                 <table class="table-preview" id="teacher-booking-table">
                     <thead>
                         <tr>
-                            <th>學生</th>
-                            <th>老師</th>
-                            <th>時間</th>
-                            <th>平台</th>
-                            <th>狀態</th>
-                            <th>原因</th>
-                            <th>連結</th>
-                            <th>錄影</th>
+                            <th data-i18n="table-student">學生</th>
+                            <th data-i18n="table-teacher">老師</th>
+                            <th data-i18n="table-time">時間</th>
+                            <th data-i18n="table-platform">平台</th>
+                            <th data-i18n="table-status">狀態</th>
+                            <th data-i18n="table-reason">原因</th>
+                            <th data-i18n="table-link">連結</th>
+                            <th data-i18n="table-recording">錄影</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -155,21 +155,21 @@
 
             <section class="card student-only">
                 <div class="section-header">
-                    <h3>我的預約</h3>
-                    <span class="status-pill" id="booking-status">尚未登入，顯示示範資料</span>
+                    <h3 data-i18n="bookings-title">我的預約</h3>
+                    <span class="status-pill" id="booking-status" data-i18n="bookings-status">尚未登入，顯示示範資料</span>
                 </div>
-                <p>登入後會帶入 JWT Token 呼叫 <code>/bookings</code>，只顯示當前學生的預約紀錄。</p>
+                <p data-i18n="bookings-description" data-i18n-html="true">登入後會帶入 JWT Token 呼叫 <code>/bookings</code>，只顯示當前學生的預約紀錄。</p>
                 <table class="table-preview" id="booking-table">
                     <thead>
                         <tr>
-                            <th>學生</th>
-                            <th>老師</th>
-                            <th>時間</th>
-                            <th>平台</th>
-                            <th>狀態</th>
-                            <th>原因</th>
-                            <th>連結</th>
-                            <th>操作</th>
+                            <th data-i18n="table-student">學生</th>
+                            <th data-i18n="table-teacher">老師</th>
+                            <th data-i18n="table-time">時間</th>
+                            <th data-i18n="table-platform">平台</th>
+                            <th data-i18n="table-status">狀態</th>
+                            <th data-i18n="table-reason">原因</th>
+                            <th data-i18n="table-link">連結</th>
+                            <th data-i18n="table-action">操作</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -181,24 +181,24 @@
     <div class="modal" id="cancel-modal" role="dialog" aria-modal="true" aria-labelledby="cancel-modal-title">
         <div class="modal__backdrop" data-dismiss="cancel"></div>
         <div class="modal__dialog">
-            <div class="modal__header">
-                <div>
-                    <p class="eyebrow">預約取消</p>
-                    <h3 id="cancel-modal-title">確認取消這筆預約嗎？</h3>
-                    <p class="muted">取消後將會移除行事曆邀請並釋放老師時段。</p>
+                <div class="modal__header">
+                    <div>
+                        <p class="eyebrow" data-i18n="cancel-eyebrow">預約取消</p>
+                        <h3 id="cancel-modal-title" data-i18n="cancel-title">確認取消這筆預約嗎？</h3>
+                        <p class="muted" data-i18n="cancel-description">取消後將會移除行事曆邀請並釋放老師時段。</p>
+                    </div>
+                    <button class="icon-button" type="button" aria-label="關閉" data-dismiss="cancel">×</button>
                 </div>
-                <button class="icon-button" type="button" aria-label="關閉" data-dismiss="cancel">×</button>
-            </div>
-            <div class="modal__body">
-                <label for="cancel-reason">取消原因（選填）</label>
-                <input id="cancel-reason" type="text" placeholder="例如：臨時有事，想重新預約" />
-            </div>
-            <div class="modal__footer">
-                <button class="ghost" type="button" data-dismiss="cancel">不用，返回</button>
-                <button class="primary" type="button" id="confirm-cancel">確認取消</button>
+                <div class="modal__body">
+                    <label for="cancel-reason" data-i18n="cancel-reason-label">取消原因（選填）</label>
+                    <input id="cancel-reason" type="text" placeholder="例如：臨時有事，想重新預約" data-i18n-placeholder="cancel-reason-placeholder" />
+                </div>
+                <div class="modal__footer">
+                    <button class="ghost" type="button" data-dismiss="cancel" data-i18n="cancel-dismiss">不用，返回</button>
+                    <button class="primary" type="button" id="confirm-cancel" data-i18n="cancel-confirm">確認取消</button>
+                </div>
             </div>
         </div>
-    </div>
 
     <script src="script.js"></script>
 </body>
