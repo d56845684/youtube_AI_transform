@@ -4,12 +4,13 @@ from datetime import date, datetime, time
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import EmailStr
 from sqlalchemy import or_, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import auth, google_integration, models, schemas, zoom_integration
-from .database import Base, engine, get_db
+from .database import Base, SessionLocal, engine, get_db
 from .logger import get_logger
 
 app = FastAPI(title="Language Tutor Marketplace")
@@ -28,6 +29,49 @@ async def on_startup() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    async def ensure_seed_user(
+        *, email: str | None, password: str | None, full_name: str | None, role: models.UserRole
+    ) -> None:
+        if not email or not password:
+            logger.warning("Skip creating %s: missing email or password", role.value)
+            return
+
+        async with SessionLocal() as session:  # type: AsyncSession
+            result = await session.execute(
+                select(models.User).where(models.User.email == email, models.User.deleted_at.is_(None))
+            )
+            user = result.scalar_one_or_none()
+            if user:
+                if user.role != role:
+                    user.role = role
+                    await session.commit()
+                    await session.refresh(user)
+                    logger.info("Updated existing %s to role %s", email, role.value)
+                return
+
+            seeded_user = models.User(
+                email=email,
+                full_name=full_name or role.value.title(),
+                role=role,
+                hashed_password=auth.get_password_hash(password),
+            )
+            session.add(seeded_user)
+            await session.commit()
+            logger.info("Created default %s user %s from environment", role.value, email)
+
+    await ensure_seed_user(
+        email=os.getenv("ADMIN_EMAIL"),
+        password=os.getenv("ADMIN_PASSWORD"),
+        full_name=os.getenv("ADMIN_FULL_NAME", "Admin"),
+        role=models.UserRole.ADMIN,
+    )
+    await ensure_seed_user(
+        email=os.getenv("SUPERUSER_EMAIL"),
+        password=os.getenv("SUPERUSER_PASSWORD"),
+        full_name=os.getenv("SUPERUSER_FULL_NAME", "Superuser"),
+        role=models.UserRole.SUPERUSER,
+    )
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,17 +83,25 @@ app.add_middleware(
 
 
 def ensure_teacher(user: models.User) -> None:
-    if user.role not in {models.UserRole.TEACHER, models.UserRole.SUPERUSER}:
+    if user.role not in {
+        models.UserRole.TEACHER,
+        models.UserRole.ADMIN,
+        models.UserRole.SUPERUSER,
+    }:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher role required")
 
 
 def ensure_student(user: models.User) -> None:
-    if user.role not in {models.UserRole.STUDENT, models.UserRole.SUPERUSER}:
+    if user.role not in {
+        models.UserRole.STUDENT,
+        models.UserRole.ADMIN,
+        models.UserRole.SUPERUSER,
+    }:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Student role required")
 
 
 def ensure_superuser(user: models.User) -> None:
-    if user.role != models.UserRole.SUPERUSER:
+    if user.role not in {models.UserRole.ADMIN, models.UserRole.SUPERUSER}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superuser role required")
 
 
@@ -135,7 +187,7 @@ async def get_booking_with_permission(
     if booking is None or booking.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found")
 
-    if current_user.role == models.UserRole.SUPERUSER:
+    if current_user.role in {models.UserRole.SUPERUSER, models.UserRole.ADMIN}:
         return booking
 
     if booking.teacher_id != current_user.id and booking.student_id != current_user.id:
@@ -156,13 +208,19 @@ async def get_order_with_permission(
     if order is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
 
-    if current_user.role != models.UserRole.SUPERUSER and order.student_id != current_user.id:
+    if current_user.role not in {models.UserRole.SUPERUSER, models.UserRole.ADMIN} and order.student_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to access order")
     return order
 
 
 @app.post("/auth/register", response_model=schemas.UserOut, tags=["Auth"])
 async def register(user_in: schemas.UserCreate, db: AsyncSession = Depends(get_db)):
+    if user_in.role in {schemas.UserRole.admin, schemas.UserRole.superuser}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot self-register admin or superuser accounts",
+        )
+
     existing = await db.execute(select(models.User).where(models.User.email == user_in.email))
     if existing.scalar_one_or_none():
         logger.warning("Registration blocked for duplicate email: %s", user_in.email)
@@ -217,7 +275,7 @@ async def get_user(
     current_user: models.User = Depends(auth.get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.role != models.UserRole.SUPERUSER and current_user.id != user_id:
+    if current_user.role not in {models.UserRole.SUPERUSER, models.UserRole.ADMIN} and current_user.id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to view this user")
 
     result = await db.execute(
@@ -227,6 +285,56 @@ async def get_user(
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
+
+
+@app.get("/admin/users/lookup", response_model=schemas.AdminUserLookup, tags=["Admin"])
+async def admin_lookup_user(
+    email: EmailStr,
+    current_user: models.User = Depends(auth.get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    ensure_superuser(current_user)
+    user_result = await db.execute(
+        select(models.User).where(models.User.email == email, models.User.deleted_at.is_(None))
+    )
+    user = user_result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    bookings_query = (
+        select(models.LessonBooking)
+        .options(
+            selectinload(models.LessonBooking.availability).selectinload(
+                models.TeacherAvailability.teacher
+            ),
+            selectinload(models.LessonBooking.student),
+            selectinload(models.LessonBooking.teacher),
+            selectinload(models.LessonBooking.zoom_recording),
+        )
+        .where(
+            models.LessonBooking.deleted_at.is_(None),
+            or_(
+                models.LessonBooking.student_id == user.id,
+                models.LessonBooking.teacher_id == user.id,
+            ),
+        )
+    )
+    bookings_result = await db.execute(bookings_query)
+    bookings = bookings_result.scalars().all()
+
+    availabilities: list[models.TeacherAvailability] | None = None
+    if user.role == models.UserRole.TEACHER:
+        availability_result = await db.execute(
+            select(models.TeacherAvailability)
+            .options(selectinload(models.TeacherAvailability.teacher))
+            .where(
+                models.TeacherAvailability.teacher_id == user.id,
+                models.TeacherAvailability.deleted_at.is_(None),
+            )
+        )
+        availabilities = availability_result.scalars().all()
+
+    return schemas.AdminUserLookup(user=user, bookings=bookings, availabilities=availabilities)
 
 
 @app.get("/teachers", response_model=list[schemas.UserPublic], tags=["Users"])
@@ -248,7 +356,7 @@ async def update_user(
     current_user: models.User = Depends(auth.get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if current_user.role != models.UserRole.SUPERUSER and current_user.id != user_id:
+    if current_user.role not in {models.UserRole.SUPERUSER, models.UserRole.ADMIN} and current_user.id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to update this user")
 
     result = await db.execute(
@@ -296,6 +404,17 @@ async def create_availability(
     current_user: models.User = Depends(auth.get_current_user),
 ):
     ensure_teacher(current_user)
+    teacher_id = payload.teacher_id or current_user.id
+    if payload.teacher_id and current_user.role not in {models.UserRole.ADMIN, models.UserRole.SUPERUSER}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to manage other teachers")
+
+    teacher_result = await db.execute(
+        select(models.User).where(models.User.id == teacher_id, models.User.deleted_at.is_(None))
+    )
+    teacher = teacher_result.scalar_one_or_none()
+    if teacher is None or teacher.role != models.UserRole.TEACHER:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Teacher not found")
+
     if payload.start_time >= payload.end_time:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -307,14 +426,14 @@ async def create_availability(
 
     await assert_no_overlapping_slots(
         db=db,
-        teacher_id=current_user.id,
+        teacher_id=teacher_id,
         availability_date=payload.availability_date,
         start_time=normalized_start,
         end_time=normalized_end,
     )
 
     availability = models.TeacherAvailability(
-        teacher_id=current_user.id,
+        teacher_id=teacher_id,
         availability_date=payload.availability_date,
         weekday=derive_weekday_name(payload.availability_date),
         start_time=normalized_start,
@@ -322,8 +441,12 @@ async def create_availability(
     )
     db.add(availability)
     await db.commit()
-    await db.refresh(availability)
-    return availability
+    result = await db.execute(
+        select(models.TeacherAvailability)
+        .options(selectinload(models.TeacherAvailability.teacher))
+        .where(models.TeacherAvailability.id == availability.id)
+    )
+    return result.scalar_one()
 
 
 @app.get(
@@ -364,7 +487,7 @@ async def get_availability(
     availability = result.scalar_one_or_none()
     if availability is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability not found")
-    if current_user.role != models.UserRole.SUPERUSER and availability.teacher_id != current_user.id:
+    if current_user.role not in {models.UserRole.SUPERUSER, models.UserRole.ADMIN} and availability.teacher_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to view availability")
     return availability
 
@@ -392,7 +515,7 @@ async def update_availability(
     availability = result.scalar_one_or_none()
     if availability is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability not found")
-    if current_user.role != models.UserRole.SUPERUSER and availability.teacher_id != current_user.id:
+    if current_user.role not in {models.UserRole.SUPERUSER, models.UserRole.ADMIN} and availability.teacher_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to update availability")
 
     availability_date = payload.availability_date or availability.availability_date
@@ -457,7 +580,7 @@ async def delete_availability(
     availability = result.scalar_one_or_none()
     if availability is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Availability not found")
-    if current_user.role != models.UserRole.SUPERUSER and availability.teacher_id != current_user.id:
+    if current_user.role not in {models.UserRole.SUPERUSER, models.UserRole.ADMIN} and availability.teacher_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to delete availability")
 
     availability.deleted_at = models.now_in_utc_plus_8()
@@ -473,6 +596,19 @@ async def book_availability(
 ):
     ensure_student(current_user)
     google_event: models.GoogleCalendarEvent | None = None
+
+    student_id = payload.student_id or current_user.id
+    if payload.student_id and current_user.role not in {models.UserRole.ADMIN, models.UserRole.SUPERUSER}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to book for another student")
+
+    student_result = await db.execute(
+        select(models.User).where(models.User.id == student_id, models.User.deleted_at.is_(None))
+    )
+    booking_student = student_result.scalar_one_or_none()
+    if booking_student is None or booking_student.role != models.UserRole.STUDENT:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Student not found")
+    if current_user.role in {models.UserRole.ADMIN, models.UserRole.SUPERUSER} and payload.student_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="student_id is required for admin booking")
 
     try:
         availability_result = await db.execute(
@@ -507,13 +643,13 @@ async def book_availability(
         }
         platform_domain = platform_domain_map.get(payload.platform, "voom.com")
         now_ts = int(datetime.now(tz=models.UTC_PLUS_8).timestamp())
-        fallback_link = f"https://{platform_domain}/{teacher.id}-{current_user.id}-{now_ts}"
+        fallback_link = f"https://{platform_domain}/{teacher.id}-{booking_student.id}-{now_ts}"
 
         availability.is_booked = 1
 
         booking = models.LessonBooking(
             availability_id=availability.id,
-            student_id=current_user.id,
+            student_id=booking_student.id,
             teacher_id=teacher.id,
             platform=payload.platform,
             conference_link=fallback_link,
@@ -531,7 +667,7 @@ async def book_availability(
                     booking=booking,
                     availability=availability,
                     teacher=teacher,
-                    student=current_user,
+                    student=booking_student,
                     reserved_by_email=current_user.email,
                 )
             except google_integration.GoogleIntegrationError as exc:
@@ -592,7 +728,7 @@ async def book_availability(
                     booking=booking,
                     availability=availability,
                     teacher=teacher,
-                    student=current_user,
+                    student=booking_student,
                     reserved_by_email=current_user.email,
                     conference_solution_type=None,
                     extra_description_lines=zoom_description_lines,
@@ -704,7 +840,7 @@ async def delete_booking(
 
         if current_user.role == models.UserRole.TEACHER:
             default_reason = "教師取消"
-        elif current_user.role == models.UserRole.SUPERUSER:
+        elif current_user.role in {models.UserRole.SUPERUSER, models.UserRole.ADMIN}:
             default_reason = "管理員取消"
         else:
             default_reason = "學生取消"
@@ -812,7 +948,7 @@ async def list_bookings(
         )
         .where(models.LessonBooking.deleted_at.is_(None))
     )
-    if current_user.role == models.UserRole.SUPERUSER:
+    if current_user.role in {models.UserRole.SUPERUSER, models.UserRole.ADMIN}:
         result = await db.execute(base_query)
     elif current_user.role == models.UserRole.TEACHER:
         result = await db.execute(
@@ -934,7 +1070,7 @@ async def list_meeting_records(
         models.LessonBooking, models.MeetingRecord.booking_id == models.LessonBooking.id
     )
     query = query.where(models.MeetingRecord.deleted_at.is_(None))
-    if current_user.role != models.UserRole.SUPERUSER:
+    if current_user.role not in {models.UserRole.SUPERUSER, models.UserRole.ADMIN}:
         query = query.where(
             or_(
                 models.LessonBooking.teacher_id == current_user.id,
@@ -1075,7 +1211,7 @@ async def list_calendar_events(
     query = select(models.GoogleCalendarEvent).join(
         models.LessonBooking, models.GoogleCalendarEvent.booking_id == models.LessonBooking.id
     ).where(models.GoogleCalendarEvent.deleted_at.is_(None))
-    if current_user.role != models.UserRole.SUPERUSER:
+    if current_user.role not in {models.UserRole.SUPERUSER, models.UserRole.ADMIN}:
         query = query.where(
             or_(
                 models.LessonBooking.teacher_id == current_user.id,

@@ -64,7 +64,7 @@ async def get_current_user(
 
 def require_role(required_role: models.UserRole):
     def dependency(user: models.User = Depends(get_current_user)) -> models.User:
-        if user.role not in {required_role, models.UserRole.SUPERUSER}:
+        if user.role not in {required_role, models.UserRole.SUPERUSER, models.UserRole.ADMIN}:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
         return user
 

@@ -34,6 +34,7 @@ class TimestampMixin:
 class UserRole(str, Enum):
     STUDENT = "student"
     TEACHER = "teacher"
+    ADMIN = "admin"
     SUPERUSER = "superuser"
 
 

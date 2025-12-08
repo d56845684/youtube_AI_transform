@@ -25,6 +25,29 @@ const cancelModal = document.getElementById("cancel-modal");
 const cancelReasonInput = document.getElementById("cancel-reason");
 const confirmCancelBtn = document.getElementById("confirm-cancel");
 const cancelDismissButtons = document.querySelectorAll("[data-dismiss=cancel]");
+const adminConsole = document.getElementById("admin-console");
+const adminStatus = document.getElementById("admin-status");
+const adminSearchForm = document.getElementById("admin-search-form");
+const adminEmailInput = document.getElementById("admin-email");
+const adminUserSummary = document.getElementById("admin-user-summary");
+const adminStudentTools = document.getElementById("admin-student-tools");
+const adminTeacherTools = document.getElementById("admin-teacher-tools");
+const adminTeacherSelect = document.getElementById("admin-teacher-select");
+const adminBookingTimeline = document.getElementById("admin-booking-timeline");
+const adminBookBtn = document.getElementById("admin-book");
+const adminLoadAvailabilityBtn = document.getElementById("admin-load-availability");
+const adminPlatformSelect = document.getElementById("admin-platform");
+const adminBookingTable = document.querySelector("#admin-booking-table tbody");
+const adminAvailabilityForm = document.getElementById("admin-availability-form");
+const adminAvailabilityList = document.getElementById("admin-availability-list");
+const adminAvailabilityStatus = document.getElementById("admin-availability-status");
+const adminAvailabilityId = document.getElementById("admin-availability-id");
+const adminResetAvailabilityBtn = document.getElementById("admin-reset-availability");
+const adminAvailabilityDate = document.getElementById("admin-availability-date");
+const adminAvailabilityStart = document.getElementById("admin-availability-start");
+const adminAvailabilityEnd = document.getElementById("admin-availability-end");
+const adminAvailabilityTeacherSelect = document.getElementById("admin-availability-teacher");
+const studentBookingsSection = document.getElementById("student-bookings-section");
 
 const translations = {
   zh: {
@@ -56,6 +79,28 @@ const translations = {
     "register-email": "Email",
     "register-password": "密碼",
     "register-submit": "建立新帳號",
+    "role-admin": "管理員",
+    "admin-console-title": "管理員控制台",
+    "admin-console-description": "輸入 Email 以查詢任一使用者",
+    "admin-search-label": "使用者 Email",
+    "admin-search-placeholder": "user@example.com",
+    "admin-search-button": "查詢",
+    "admin-student-title": "為學生預約",
+    "admin-teacher-label": "選擇老師",
+    "admin-book": "代為預約",
+    "admin-teacher-title": "教師時段維護",
+    "admin-availability-submit": "新增 / 更新時段",
+    "admin-availability-reset": "重設",
+    "admin-bookings-title": "使用者預約紀錄",
+    "admin-search-success": "已載入 {email} 的資料 ({role})",
+    "admin-search-failure": "查詢失敗：{message}",
+    "admin-booking-success": "已為 {email} 預約完成",
+    "admin-booking-error": "預約失敗：{message}",
+    "admin-slot-required": "請先載入並選擇時段",
+    "admin-teacher-required": "請選擇老師後再載入時段",
+    "admin-availability-saved": "已更新老師時段 {date} {range}",
+    "admin-availability-error": "更新失敗：{message}",
+    "admin-availability-deleted": "已刪除時段",
     "booking-select-title": "選擇可預約時段",
     "booking-status-placeholder": "請選擇老師或使用示範資料",
     "booking-teacher-label": "老師",
@@ -180,6 +225,28 @@ const translations = {
     "register-email": "Email",
     "register-password": "Password",
     "register-submit": "Create account",
+    "role-admin": "Admin",
+    "admin-console-title": "Admin console",
+    "admin-console-description": "Search any user by email",
+    "admin-search-label": "User email",
+    "admin-search-placeholder": "user@example.com",
+    "admin-search-button": "Search",
+    "admin-student-title": "Book for a student",
+    "admin-teacher-label": "Pick teacher",
+    "admin-book": "Book on behalf",
+    "admin-teacher-title": "Teacher availability upkeep",
+    "admin-availability-submit": "Create / update slot",
+    "admin-availability-reset": "Reset",
+    "admin-bookings-title": "User bookings",
+    "admin-search-success": "Loaded {email} ({role})",
+    "admin-search-failure": "Lookup failed: {message}",
+    "admin-booking-success": "Booked successfully for {email}",
+    "admin-booking-error": "Booking failed: {message}",
+    "admin-slot-required": "Load and pick a slot first",
+    "admin-teacher-required": "Pick a teacher before loading slots",
+    "admin-availability-saved": "Updated slot {date} {range}",
+    "admin-availability-error": "Update failed: {message}",
+    "admin-availability-deleted": "Slot removed",
     "booking-select-title": "Pick a bookable slot",
     "booking-status-placeholder": "Select a teacher or use sample data",
     "booking-teacher-label": "Teacher",
@@ -329,6 +396,13 @@ let currentTimelineData = sampleAvailabilities;
 let currentTimelineFromApi = false;
 let currentTeacherTimelineData = sampleAvailabilities;
 let currentTeacherTimelineFromApi = false;
+let adminTargetUser = null;
+let adminTargetBookings = [];
+let adminTargetAvailabilities = [];
+let adminSelectedSlot = null;
+let adminManagedAvailabilities = [];
+let adminManagedTeacherId = null;
+let adminTimelineSlots = [];
 
 function t(key, vars = {}) {
   const template = translations[currentLocale]?.[key] ?? translations.zh?.[key] ?? vars?.fallback ?? key;
@@ -790,6 +864,186 @@ function renderAllBookings() {
   const studentView = currentUser?.role === "student" ? filterStudentBookings(bookingData) : bookingData;
   renderBookings(bookingTable, studentView);
   renderBookings(teacherBookingTable, bookingData);
+  renderBookings(adminBookingTable, adminTargetBookings);
+}
+
+function renderAdminBookingTimeline(list = [], fromApi = false) {
+  if (!adminBookingTimeline) return;
+  const activeList = Array.isArray(list) ? list.filter((slot) => !slot.deleted_at) : [];
+  const bookable = activeList.filter((slot) => !slot.is_booked);
+  adminTimelineSlots = bookable;
+  if (!bookable.length) {
+    adminBookingTimeline.innerHTML = `<p class="muted">${fromApi ? t("booking-no-slots") : ""}</p>`;
+    return;
+  }
+
+  adminBookingTimeline.innerHTML = bookable
+    .map((slot) => {
+      const label = describeAvailability(slot);
+      const teacherName = slot.teacher?.full_name || slot.teacher_full_name || slot.teacher || t("booking-teacher-fallback");
+      return `
+        <div class="timeline-step" data-slot-id="${slot.id}">
+          <div class="timeline-meta">
+            <strong>${escapeAttribute(teacherName)}</strong> • ${label}
+          </div>
+          <button class="ghost" data-action="admin-select-slot">${t("booking-timeline-select")}</button>
+        </div>
+      `;
+    })
+    .join("");
+
+  adminBookingTimeline.querySelectorAll("[data-action=admin-select-slot]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      const wrapper = event.currentTarget.closest(".timeline-step");
+      const slotId = wrapper?.dataset.slotId;
+      adminSelectedSlot = bookable.find((slot) => `${slot.id}` === `${slotId}`) || null;
+      if (adminSelectedSlot && adminStatus) {
+        setStatus(adminStatus, describeAvailability(adminSelectedSlot));
+      }
+    });
+  });
+}
+
+function renderAdminAvailabilities(list = []) {
+  if (!adminAvailabilityList) return;
+  if (!list.length) {
+    adminAvailabilityList.innerHTML = `<p class="muted">${t("teacher-availability-label")}</p>`;
+    return;
+  }
+  adminAvailabilityList.innerHTML = list
+    .map((slot) => {
+      const label = describeAvailability(slot);
+      return `
+        <div class="timeline-step" data-slot-id="${slot.id}">
+          <div class="timeline-meta">${escapeAttribute(label)}</div>
+          <div class="tag-row">
+            <button class="ghost" data-action="admin-edit-slot" data-slot-id="${slot.id}">Edit</button>
+            <button class="ghost" data-action="admin-delete-slot" data-slot-id="${slot.id}">Delete</button>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  adminAvailabilityList.querySelectorAll("[data-action=admin-edit-slot]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      const slotId = event.currentTarget.dataset.slotId;
+      const slot = list.find((item) => `${item.id}` === `${slotId}`);
+      if (!slot) return;
+      if (adminAvailabilityId) adminAvailabilityId.value = slot.id;
+      if (adminAvailabilityDate) adminAvailabilityDate.value = slot.availability_date || "";
+      const startValue = (slot.start_time || "").toString().slice(0, 5);
+      const endValue = (slot.end_time || "").toString().slice(0, 5);
+      if (adminAvailabilityStart) adminAvailabilityStart.value = startValue;
+      if (adminAvailabilityEnd) adminAvailabilityEnd.value = endValue;
+      setStatus(adminAvailabilityStatus, describeAvailability(slot));
+    });
+  });
+
+  adminAvailabilityList.querySelectorAll("[data-action=admin-delete-slot]").forEach((btn) => {
+    btn.addEventListener("click", async (event) => {
+      const slotId = event.currentTarget.dataset.slotId;
+      if (!slotId) return;
+      try {
+        await apiFetch(`/availability/${slotId}`, { method: "DELETE" });
+        setStatus(adminAvailabilityStatus, t("admin-availability-deleted"));
+        if (adminTargetUser?.email) {
+          await loadAdminUser(adminTargetUser.email);
+        }
+      } catch (error) {
+        setStatus(adminAvailabilityStatus, t("admin-availability-error", { message: error.message }), true);
+      }
+    });
+  });
+}
+
+async function loadAdminUser(email) {
+  if (!email) return;
+  try {
+    const data = await apiFetch(`/admin/users/lookup?email=${encodeURIComponent(email)}`);
+    adminTargetUser = data.user;
+    adminTargetBookings = data.bookings || [];
+    adminTargetAvailabilities = data.availabilities || [];
+    adminManagedTeacherId = adminTargetUser.role === "teacher" ? adminTargetUser.id : null;
+    adminManagedAvailabilities = adminManagedTeacherId ? adminTargetAvailabilities : [];
+    adminSelectedSlot = null;
+    renderAdminBookingTimeline([]);
+    if (adminManagedTeacherId && adminAvailabilityTeacherSelect) {
+      adminAvailabilityTeacherSelect.value = `${adminManagedTeacherId}`;
+    }
+    if (adminTeacherSelect && adminManagedTeacherId) {
+      adminTeacherSelect.value = `${adminManagedTeacherId}`;
+    }
+    renderAdminUserData();
+    setStatus(adminStatus, t("admin-search-success", { email: adminTargetUser.email, role: adminTargetUser.role }));
+  } catch (error) {
+    adminTargetUser = null;
+    adminTargetBookings = [];
+    adminTargetAvailabilities = [];
+    adminManagedAvailabilities = [];
+    adminManagedTeacherId = null;
+    renderAdminUserData();
+    setStatus(adminStatus, t("admin-search-failure", { message: error.message }), true);
+  }
+}
+
+function renderAdminUserData() {
+  if (!adminUserSummary) return;
+  const hasUser = Boolean(adminTargetUser);
+  adminUserSummary.textContent = hasUser
+    ? `${adminTargetUser.full_name} · ${adminTargetUser.email} · ${adminTargetUser.role}`
+    : "";
+
+  if (adminStudentTools) {
+    adminStudentTools.hidden = !hasUser || adminTargetUser.role !== "student";
+  }
+  if (adminTeacherTools) {
+    adminTeacherTools.hidden = !isAdminUser();
+  }
+
+  if (!hasUser) {
+    renderBookings(adminBookingTable, []);
+    renderAdminAvailabilities(adminManagedAvailabilities);
+    renderAdminBookingTimeline([]);
+    return;
+  }
+
+  renderBookings(adminBookingTable, adminTargetBookings || []);
+  renderAdminAvailabilities(adminManagedAvailabilities || []);
+}
+
+async function loadAdminTeacherAvailability() {
+  const teacherId =
+    adminTeacherSelect?.value?.trim() ||
+    adminAvailabilityTeacherSelect?.value?.trim() ||
+    (adminManagedTeacherId ? `${adminManagedTeacherId}` : "");
+  if (!teacherId) {
+    setStatus(adminStatus, t("admin-teacher-required"), true);
+    return;
+  }
+  try {
+    const availability = await apiFetch(`/teachers/${teacherId}/availability`);
+    renderAdminBookingTimeline(availability, true);
+    adminManagedTeacherId = Number(teacherId);
+    adminManagedAvailabilities = availability || [];
+    renderAdminAvailabilities(adminManagedAvailabilities);
+    if (adminAvailabilityTeacherSelect) {
+      adminAvailabilityTeacherSelect.value = teacherId;
+    }
+    if (availability?.length) {
+      setStatus(adminStatus, t("booking-loaded-slots", { teacher: teacherId, count: availability.length }));
+    }
+  } catch (error) {
+    adminManagedAvailabilities = [];
+    renderAdminAvailabilities(adminManagedAvailabilities);
+    renderAdminBookingTimeline([]);
+    setStatus(adminStatus, t("booking-load-error", { message: error.message }), true);
+  }
+}
+
+function resetAdminAvailabilityForm() {
+  if (adminAvailabilityId) adminAvailabilityId.value = "";
+  adminAvailabilityForm?.reset();
 }
 
 function filterStudentBookings(data) {
@@ -873,6 +1127,24 @@ function renderTeacherOptions(list) {
   if (selected) {
     teacherNameInput.value = selected;
   }
+  if (adminTeacherSelect) {
+    const adminSelected = adminTeacherSelect.value;
+    adminTeacherSelect.innerHTML =
+      `<option value="">${t("booking-teacher-placeholder")}</option>` +
+      list.map((teacher) => `<option value="${teacher.id}">${teacher.full_name}</option>`).join("");
+    if (adminSelected) {
+      adminTeacherSelect.value = adminSelected;
+    }
+  }
+  if (adminAvailabilityTeacherSelect) {
+    const adminTeacherSelected = adminAvailabilityTeacherSelect.value;
+    adminAvailabilityTeacherSelect.innerHTML =
+      `<option value="">${t("booking-teacher-placeholder")}</option>` +
+      list.map((teacher) => `<option value="${teacher.id}">${teacher.full_name}</option>`).join("");
+    if (adminTeacherSelected) {
+      adminAvailabilityTeacherSelect.value = adminTeacherSelected;
+    }
+  }
 }
 
 async function refreshTeacherDirectory(query = "") {
@@ -922,10 +1194,18 @@ function setActivePage(target) {
   });
 }
 
+function isAdminUser() {
+  return currentUser?.role === "admin" || currentUser?.role === "superuser";
+}
+
 function updateRoleUI() {
   const isTeacher = currentUser?.role === "teacher";
+  const adminMode = isAdminUser();
   if (studentOnlySections.length) {
-    studentOnlySections.forEach((section) => section.classList.toggle("hidden", isTeacher));
+    studentOnlySections.forEach((section) => {
+      const shouldHide = (isTeacher && !adminMode) || adminMode;
+      section.classList.toggle("hidden", shouldHide);
+    });
   }
   if (teacherTools) {
     teacherTools.classList.toggle("hidden", !isTeacher);
@@ -936,6 +1216,12 @@ function updateRoleUI() {
       isTeacher ? t("teacher-mode", { email: currentUser?.email }) : t("teacher-tools-status"),
       !isTeacher && !!currentUser,
     );
+  }
+  if (adminConsole) {
+    adminConsole.classList.toggle("hidden", !adminMode);
+  }
+  if (studentBookingsSection) {
+    studentBookingsSection.classList.toggle("hidden", adminMode);
   }
   if (!isTeacher) {
     renderTimeline(sampleAvailabilities, false, teacherAvailabilityList, false);
@@ -1163,6 +1449,118 @@ if (teacherAvailabilityForm) {
       setStatus(teacherAvailabilityStatus, t("teacher-add-error", { message: error.message }), true);
     }
   });
+}
+
+if (adminSearchForm) {
+  adminSearchForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!isAdminUser()) {
+      setStatus(adminStatus, t("admin-search-failure", { message: "Unauthorized" }), true);
+      return;
+    }
+    const email = adminEmailInput?.value?.trim();
+    await loadAdminUser(email);
+  });
+}
+
+if (adminLoadAvailabilityBtn) {
+  adminLoadAvailabilityBtn.addEventListener("click", () => {
+    if (!isAdminUser()) return;
+    loadAdminTeacherAvailability();
+  });
+}
+
+if (adminBookBtn) {
+  adminBookBtn.addEventListener("click", async () => {
+    if (!isAdminUser() || !adminTargetUser || adminTargetUser.role !== "student") return;
+    if (!adminSelectedSlot) {
+      setStatus(adminStatus, t("admin-slot-required"), true);
+      return;
+    }
+    const platform = adminPlatformSelect?.value || "Google Meet";
+    try {
+      await apiFetch("/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          availability_id: adminSelectedSlot.id,
+          platform,
+          student_id: adminTargetUser.id,
+        }),
+      });
+      setStatus(adminStatus, t("admin-booking-success", { email: adminTargetUser.email }));
+      if (adminTargetUser?.email) {
+        await loadAdminUser(adminTargetUser.email);
+      }
+      adminSelectedSlot = null;
+      renderAdminBookingTimeline([]);
+    } catch (error) {
+      setStatus(adminStatus, t("admin-booking-error", { message: error.message }), true);
+    }
+  });
+}
+
+if (adminAvailabilityForm) {
+  adminAvailabilityForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!isAdminUser()) {
+      setStatus(adminAvailabilityStatus, t("admin-availability-error", { message: "Unauthorized" }), true);
+      return;
+    }
+
+    const formData = new FormData(adminAvailabilityForm);
+    const availabilityDate = formData.get("availabilityDate");
+    const startTime = formData.get("startTime");
+    const endTime = formData.get("endTime");
+    const availabilityId = formData.get("availabilityId");
+    const selectedTeacherId =
+      adminAvailabilityTeacherSelect?.value?.trim() ||
+      (adminTargetUser?.role === "teacher" ? `${adminTargetUser.id}` : "") ||
+      (adminManagedTeacherId ? `${adminManagedTeacherId}` : "");
+
+    if (!selectedTeacherId) {
+      setStatus(adminAvailabilityStatus, t("admin-teacher-required"), true);
+      return;
+    }
+    const payload = {
+      availability_date: availabilityDate,
+      start_time: startTime,
+      end_time: endTime,
+    };
+
+    try {
+      if (availabilityId) {
+        await apiFetch(`/availability/${availabilityId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await apiFetch("/teachers/availability", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, teacher_id: selectedTeacherId }),
+        });
+      }
+      setStatus(
+        adminAvailabilityStatus,
+        t("admin-availability-saved", {
+          date: formatDateValue(availabilityDate),
+          range: `${startTime} - ${endTime}`,
+        }),
+      );
+      resetAdminAvailabilityForm();
+      if (selectedTeacherId) {
+        await loadAdminTeacherAvailability();
+      }
+    } catch (error) {
+      setStatus(adminAvailabilityStatus, t("admin-availability-error", { message: error.message }), true);
+    }
+  });
+}
+
+if (adminResetAvailabilityBtn) {
+  adminResetAvailabilityBtn.addEventListener("click", resetAdminAvailabilityForm);
 }
 
 if (loadAvailabilityBtn) {
