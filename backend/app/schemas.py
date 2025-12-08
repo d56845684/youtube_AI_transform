@@ -131,6 +131,62 @@ class BookingCancel(BaseModel):
     status_desc: Optional[str] = None
 
 
+class ProviderType(str, Enum):
+    zoom = "zoom"
+    google_meet = "google_meet"
+    voov = "voov"
+
+
+class VideoProviderCreate(BaseModel):
+    provider: ProviderType
+    account_label: constr(min_length=1)
+    access_key: Optional[str] = None
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    is_active: bool = True
+
+
+class VideoProviderOut(BaseModel):
+    id: int
+    provider: ProviderType
+    account_label: str
+    access_key: Optional[str]
+    access_token: Optional[str]
+    refresh_token: Optional[str]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: Optional[datetime]
+
+    class Config:
+        orm_mode = True
+
+
+class ClassroomCreate(BaseModel):
+    provider_id: int
+    booking_id: Optional[int] = None
+    start_at: datetime
+    end_at: datetime
+    meeting_link: Optional[str] = None
+    status_desc: Optional[str] = None
+
+
+class ClassroomOut(BaseModel):
+    id: int
+    provider_id: int
+    booking_id: Optional[int]
+    start_at: datetime
+    end_at: datetime
+    meeting_link: Optional[str]
+    status_desc: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: Optional[datetime]
+
+    class Config:
+        orm_mode = True
+
+
 class OrderCreate(BaseModel):
     order_total: float
     lesson_credits: int

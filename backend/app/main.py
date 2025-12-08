@@ -165,6 +165,37 @@ def combine_availability_window(
     return start_dt, end_dt
 
 
+async def find_available_provider(
+    *,
+    db: AsyncSession,
+    provider_type: models.VideoProvider.ProviderType,
+    start_at: datetime,
+    end_at: datetime,
+) -> models.VideoProvider | None:
+    provider_result = await db.execute(
+        select(models.VideoProvider)
+            .where(
+                models.VideoProvider.provider == provider_type,
+                models.VideoProvider.is_active.is_(True),
+                models.VideoProvider.deleted_at.is_(None),
+            )
+            .order_by(models.VideoProvider.id)
+    )
+
+    for provider in provider_result.scalars():
+        overlap_query = select(models.Classroom).where(
+            models.Classroom.provider_id == provider.id,
+            models.Classroom.deleted_at.is_(None),
+            models.Classroom.start_at < end_at,
+            models.Classroom.end_at > start_at,
+        )
+        overlap_result = await db.execute(overlap_query)
+        if overlap_result.scalar_one_or_none() is None:
+            return provider
+
+    return None
+
+
 async def get_booking_with_permission(
     booking_id: int, current_user: models.User, db: AsyncSession
 ) -> models.LessonBooking:
@@ -660,6 +691,27 @@ async def book_availability(
         start_dt, end_dt = combine_availability_window(availability)
         duration_minutes = max(1, int((end_dt - start_dt).total_seconds() // 60))
 
+        platform_provider_map = {
+            "Google Meet": models.VideoProvider.ProviderType.GOOGLE_MEET,
+            "Zoom": models.VideoProvider.ProviderType.ZOOM,
+            "VOOM": models.VideoProvider.ProviderType.VOOV,
+        }
+        provider_type = platform_provider_map.get(payload.platform)
+        if provider_type is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported platform {payload.platform}",
+            )
+
+        provider = await find_available_provider(
+            db=db, provider_type=provider_type, start_at=start_dt, end_at=end_dt
+        )
+        if provider is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="No available accounts for the requested provider during the selected time",
+            )
+
         if payload.platform == "Google Meet":
             try:
                 google_event = await google_integration.create_calendar_event_for_booking(
@@ -744,6 +796,15 @@ async def book_availability(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail="Failed to create Google Calendar event",
                 ) from exc
+
+        classroom = models.Classroom(
+            provider_id=provider.id,
+            booking_id=booking.id,
+            start_at=start_dt,
+            end_at=end_dt,
+            meeting_link=booking.conference_link,
+        )
+        db.add(classroom)
 
         meeting_record = models.MeetingRecord(
             booking_id=booking.id,
@@ -846,6 +907,16 @@ async def delete_booking(
             default_reason = "學生取消"
         booking.status = models.LessonBooking.BookingStatus.CANCELLED
         booking.status_desc = (payload.status_desc if payload else None) or default_reason
+
+        classroom_result = await db.execute(
+            select(models.Classroom).where(
+                models.Classroom.booking_id == booking.id,
+                models.Classroom.deleted_at.is_(None),
+            )
+        )
+        for classroom in classroom_result.scalars():
+            classroom.deleted_at = models.now_in_utc_plus_8()
+
         await db.commit()
     except Exception:
         await db.rollback()
